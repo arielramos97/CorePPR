@@ -2,8 +2,7 @@ import numba
 import numpy as np
 import scipy.sparse as sp
 from sklearn import neighbors
-
-
+import random
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
@@ -108,12 +107,19 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         j = j_3
         val = val_3
 
+        #Select random k
+        idx = np.arange(len(j))
+
+        idx_random = np.random.choice(idx, topk)
+
+
         j_np, val_np = np.array(j), np.array(val)
 
         #Select top k
-        idx_topk = np.argsort(val_np)[-topk:]
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+        # idx_topk = np.argsort(val_np)[-topk:]
+
+        js[i] = j_np[idx_random]
+        vals[i] = val_np[idx_random]
     return js, vals
 
 
