@@ -97,16 +97,16 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         #     print('val: ', val[0:10])
 
 
-        # hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
-        # j_3 = []
-        # val_3 = []
-        # for k, elem in enumerate(j):
-        #     # print(elem)
-        #     if elem in hop3:
-        #         j_3.append(j[k])
-        #         val_3.append(val[k])
-        # j = j_3
-        # val = val_3
+        hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
+        j_3 = []
+        val_3 = []
+        for k, elem in enumerate(j):
+            # print(elem)
+            if elem in hop3:
+                j_3.append(j[k])
+                val_3.append(val[k])
+        j = j_3
+        val = val_3
 
         j_np, val_np = np.array(j), np.array(val)
 
