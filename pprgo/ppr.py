@@ -1,6 +1,8 @@
 import numba
 import numpy as np
 import scipy.sparse as sp
+from sklearn import neighbors
+
 
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
@@ -45,14 +47,70 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
         vals.append(val)
     return js, vals
 
+@numba.njit(cache=True)
+def three_hop_neighbourhood(node, indptr, indices):
+
+    hop = set()
+
+    for v_node_1 in indices[indptr[node]:indptr[node + 1]]:
+        hop.add(v_node_1)
+        for v_node_2 in indices[indptr[v_node_1]:indptr[v_node_1 + 1]]:
+            hop.add(v_node_2)
+            for v_node_3 in indices[indptr[v_node_2]:indptr[v_node_2 + 1]]:
+                hop.add(v_node_3)
+
+    hop_np = np.array(list(hop))
+    hop_np = hop_np.astype(np.int64)
+    return list(hop_np)
+
+    
+    
 
 @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
+
+    # print('js: ', len(js), ' vals: ', len(vals), len(nodes))
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        # if i ==0:
+        #     hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
+        #     print('hop3: ', len(hop3))
+        #     print('j len : ', len(j))
+        #     print('j: ', j[0:10])
+        #     print('val: ', val[0:10])
+
+        #     j_3 = []
+        #     val_3 = []
+        #     for k, elem in enumerate(j):
+        #         # print(elem)
+        #         if elem in hop3:
+        #             j_3.append(j[k])
+        #             val_3.append(val[k])
+            
+        #     j = j_3
+        #     val = val_3
+        #     print('j len : ', len(j))
+
+        #     print('j: ', j[0:10])
+        #     print('val: ', val[0:10])
+
+
+        # hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
+        # j_3 = []
+        # val_3 = []
+        # for k, elem in enumerate(j):
+        #     # print(elem)
+        #     if elem in hop3:
+        #         j_3.append(j[k])
+        #         val_3.append(val[k])
+        # j = j_3
+        # val = val_3
+
         j_np, val_np = np.array(j), np.array(val)
+
+        #Select top k
         idx_topk = np.argsort(val_np)[-topk:]
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
@@ -68,6 +126,7 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk):
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
                                                 numba.float32(alpha), numba.float32(epsilon), nodes, topk)
 
+    
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
 
 
@@ -81,6 +140,7 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row'):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
     topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk).tocsr()
+
 
     if normalization == 'sym':
         # Assume undirected (symmetric) adjacency matrix
