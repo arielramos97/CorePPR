@@ -73,53 +73,19 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     # print('js: ', len(js), ' vals: ', len(vals), len(nodes))
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-        # if i ==0:
-        #     hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
-        #     print('hop3: ', len(hop3))
-        #     print('j len : ', len(j))
-        #     print('j: ', j[0:10])
-        #     print('val: ', val[0:10])
+   
+        #EXPERIMENT 2
 
-        #     j_3 = []
-        #     val_3 = []
-        #     for k, elem in enumerate(j):
-        #         # print(elem)
-        #         if elem in hop3:
-        #             j_3.append(j[k])
-        #             val_3.append(val[k])
-            
-        #     j = j_3
-        #     val = val_3
-        #     print('j len : ', len(j))
-
-        #     print('j: ', j[0:10])
-        #     print('val: ', val[0:10])
-
-
-        hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
-        j_3 = []
-        val_3 = []
-        for k, elem in enumerate(j):
-            # print(elem)
-            if elem in hop3:
-                j_3.append(j[k])
-                val_3.append(val[k])
-        j = j_3
-        val = val_3
-
-        #Select random k
-        idx = np.arange(len(j))
-
-        idx_random = np.random.choice(idx, topk)
-
-
+        #Select top k (k is random)
+        k_values = np.arange(20, 65)
+        k  = np.random.choice(k_values)
+       
         j_np, val_np = np.array(j), np.array(val)
+        
+        idx_topk = np.argsort(val_np)[-k:]
 
-        #Select top k
-        # idx_topk = np.argsort(val_np)[-topk:]
-
-        js[i] = j_np[idx_random]
-        vals[i] = val_np[idx_random]
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
     return js, vals
 
 
