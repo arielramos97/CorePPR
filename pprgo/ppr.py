@@ -67,6 +67,8 @@ def three_hop_neighbourhood(node, indptr, indices):
 
 @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
+
+    #EXPERIMENT 3: Random number of training nodes.
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
@@ -82,7 +84,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
        
         j_np, val_np = np.array(j), np.array(val)
         
-        idx_topk = np.argsort(val_np)[-k:]
+        idx_topk = np.argsort(val_np)[-topk:]
 
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
