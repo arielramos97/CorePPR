@@ -77,7 +77,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         #EXPERIMENT 2
 
         #Select top k (k is random)
-        k_values = np.arange(20, 65)
+        k_values = np.arange(int(topk/2), topk)
         k  = np.random.choice(k_values)
        
         j_np, val_np = np.array(j), np.array(val)
