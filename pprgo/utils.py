@@ -121,9 +121,7 @@ def get_data(dataset_path, seed, ntrain_div_classes, normalize_attr=None):
     # split the data into train/val/test
     num_classes = g.labels.max() + 1
     n_train = num_classes * ntrain_div_classes
-    n_val = n_train * 5
-    print('ntrain: ', n_train)
-    print('nval: ', n_train)
+    n_val = n_train * 10
     train_idx, val_idx, test_idx = split_random(seed, n, n_train, n_val)
 
 

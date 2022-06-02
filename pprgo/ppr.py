@@ -68,19 +68,23 @@ def three_hop_neighbourhood(node, indptr, indices):
 @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
-    #EXPERIMENT 3: Random number of training nodes.
+    #EXPERIMENT 1 improved
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
-    # print('js: ', len(js), ' vals: ', len(vals), len(nodes))
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
-        #EXPERIMENT 2
 
-        #Select top k (k is random)
-        k_values = np.arange(int(topk/2), topk)
-        k  = np.random.choice(k_values)
+        hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
+        j_3 = []
+        val_3 = []
+        for idx, elem in enumerate(j):
+            if elem in hop3:
+                j_3.append(j[idx])
+                val_3.append(val[idx])
+        j = j_3
+        val = val_3
        
         j_np, val_np = np.array(j), np.array(val)
         
