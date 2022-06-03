@@ -75,20 +75,14 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
-
-        hop3 = three_hop_neighbourhood(nodes[i], indptr, indices)
-        j_3 = []
-        val_3 = []
-        for idx, elem in enumerate(j):
-            if elem in hop3:
-                j_3.append(j[idx])
-                val_3.append(val[idx])
-        j = j_3
-        val = val_3
+        #Improved Exp2 - with range between [half k, k + half k]
+        half_k = int(topk/2)
+        k_values = np.arange(half_k, topk + half_k)
+        random_k  = np.random.choice(k_values)
        
         j_np, val_np = np.array(j), np.array(val)
         
-        idx_topk = np.argsort(val_np)[-topk:]
+        idx_topk = np.argsort(val_np)[-random_k:]
 
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
