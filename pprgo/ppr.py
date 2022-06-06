@@ -4,6 +4,10 @@ import scipy.sparse as sp
 from sklearn import neighbors
 import random
 
+from kneed import KneeLocator
+
+import matplotlib.pyplot as plt
+
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
     alpha_eps = alpha * epsilon
@@ -90,12 +94,17 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         j_np, val_np = np.array(j), np.array(val)
 
-        threshold = np.mean(val_np) / topk
+        # threshold = np.mean(val_np) / topk
+        threshold = 0.006
 
         k_array = filter_mask(val_np, threshold)
         k = k_array.shape[0]
-        # if i <5:
-        #     print(k_array.shape)
+        if i <5:
+            print('threshold: ', threshold)
+            print('k: ', k)
+
+        #-----
+
 
 
 
