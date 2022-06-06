@@ -62,7 +62,9 @@ def three_hop_neighbourhood(node, indptr, indices):
     hop_np = hop_np.astype(np.int64)
     return list(hop_np)
 
-    
+@numba.njit(cache=True)
+def filter_mask(arr, threshold):
+    return arr[arr > threshold]
     
 
 @numba.njit(cache=True, parallel=True)
@@ -75,13 +77,30 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
-        #Improved Exp2 - with range between [k - x, k + x]
-        k_values = np.arange(topk - 30,  topk +30)
-        random_k  = np.random.choice(k_values)
-       
-        j_np, val_np = np.array(j), np.array(val)
+        #Ex5 - select threshold for pageRank values --> this will give different k for each node.
+
+        #j tells you which node and val its pageRank value
+        # if i < 5:
+        #     print('j: ', j, ' val: ', val)
+        #     print('len j: ', len(j), 'len val: ', len(val))
+        #     print('sum: ', sum(val))
+
+        threshold = sum(val) / len(val)
         
-        idx_topk = np.argsort(val_np)[-random_k:]
+
+        j_np, val_np = np.array(j), np.array(val)
+
+        k_array = filter_mask(val_np, threshold)
+        k = k_array.shape[0]
+        # if i <5:
+        #     print(k_array.shape)
+
+
+
+        
+        # idx_topk = np.argsort(val_np)[-topk:]
+        idx_topk = np.argsort(val_np)[-k:]
+
 
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
