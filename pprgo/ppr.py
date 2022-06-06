@@ -102,7 +102,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         y = val_np[idx_y]
         y = y[1:]    #ignore largest element (root node)
 
-        kn = get_kn(x, y, 20)
+        kn = get_kn(x, y, 10)
 
         # if i==1:
         #     print(val)
