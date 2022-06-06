@@ -83,6 +83,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
 
     #EXPERIMENT 6
+
+    all_kn = 0
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
@@ -103,6 +105,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         y = y[1:]    #ignore largest element (root node)
 
         kn = get_kn(x, y, 5)
+        all_kn += kn
 
         # if i==1:
         #     print(val)
@@ -117,6 +120,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
+    
+    print('Mean kn: ', int(all_kn/len(nodes)))
     return js, vals
 
 
