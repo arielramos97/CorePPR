@@ -80,6 +80,14 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        j_np, val_np = np.array(j), np.array(val)
+        idx_topk = np.argsort(val_np)[-topk:]
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
+    return js, vals
+
+    # for i in numba.prange(len(nodes)):
+    #     j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
         #Ex5 - select threshold for pageRank values --> this will give different k for each node.
 
@@ -92,30 +100,26 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         
         
 
-        j_np, val_np = np.array(j), np.array(val)
+    #     j_np, val_np = np.array(j), np.array(val)
 
-        # threshold = np.mean(val_np) / topk
-        threshold = 0.001
+    #     # threshold = np.mean(val_np) / topk
+    #     threshold = 0.001
 
-        k_array = filter_mask(val_np, threshold)
-        k = k_array.shape[0]
-        if i <5:
-            print('threshold: ', threshold)
-            print('k: ', k)
+    #     k_array = filter_mask(val_np, threshold)
+    #     k = k_array.shape[0]
+    #     if i <5:
+    #         print('threshold: ', threshold)
+    #         print('k: ', k)
 
-        #-----
-
-
-
-
+    #     #-----
         
-        # idx_topk = np.argsort(val_np)[-topk:]
-        idx_topk = np.argsort(val_np)[-k:]
+    #     # idx_topk = np.argsort(val_np)[-topk:]
+    #     idx_topk = np.argsort(val_np)[-k:]
 
 
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
-    return js, vals
+    #     js[i] = j_np[idx_topk]
+    #     vals[i] = val_np[idx_topk]
+    # return js, vals
 
 
 def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk):
