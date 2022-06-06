@@ -6,8 +6,6 @@ import random
 
 from kneed import KneeLocator
 
-import matplotlib.pyplot as plt
-
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
     alpha_eps = alpha * epsilon
@@ -69,19 +67,25 @@ def three_hop_neighbourhood(node, indptr, indices):
 @numba.njit(cache=True)
 def filter_mask(arr, threshold):
     return arr[arr > threshold]
+
+# @numba.njit(cache=True)
+def get_kn(x, y, S):
+    kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
+    return kn.knee + 1 #Recover ignored element
     
 
-@numba.njit(cache=True, parallel=True)
+# @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
-    #EXPERIMENT 1 improved
+    
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
+
+    #EXPERIMENT 6
     for i in numba.prange(len(nodes)):
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
-        #Ex5 - select threshold for pageRank values --> this will give different k for each node.
 
         #j tells you which node and val its pageRank value
         # if i < 5:
@@ -89,28 +93,23 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         #     print('len j: ', len(j), 'len val: ', len(val))
         #     print('sum: ', sum(val))
 
-        
-        
 
         j_np, val_np = np.array(j), np.array(val)
 
-        # threshold = np.mean(val_np) / topk
-        threshold = 0.0005
+        x = np.arange(0, len(val) - 1)  #Size is len of val minus largest element
+        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
 
-        k_array = filter_mask(val_np, threshold)
-        k = k_array.shape[0]
+        y = val_np[idx_y]
+        y = y[1:]    #ignore largest element (root node)
+
+        kn = get_kn(x, y, 3)
+
         if i <5:
-            print('threshold: ', threshold)
-            print('k: ', k)
-
-        #-----
-
-
-
+            print('k: ', kn)
+        # idx_topk = np.argsort(val_np)[-topk:]
+        idx_topk = idx_y[0:kn]
 
         
-        # idx_topk = np.argsort(val_np)[-topk:]
-        idx_topk = np.argsort(val_np)[-k:]
 
 
         js[i] = j_np[idx_topk]

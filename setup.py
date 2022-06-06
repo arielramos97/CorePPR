@@ -4,9 +4,10 @@ from setuptools import setup
 # which can be installed using environment.yaml (e.g. via `conda env create -f environment.yaml`).
 install_requires = [
         "numpy",
+        "kneed",
         "scipy>=1.3",
         "numba>=0.49",
-        #tensorflow<2.0
+        # "tensorflow<2.0",
         "tensorflow-gpu<2.0",
         "scikit-learn",
         "sacred",
