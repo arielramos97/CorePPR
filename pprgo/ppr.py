@@ -95,13 +95,13 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         j_np, val_np = np.array(j), np.array(val)
 
         # threshold = np.mean(val_np) / topk
-        threshold = 0.004
+        threshold = 0.002
 
         k_array = filter_mask(val_np, threshold)
         k = k_array.shape[0]
-        # if i <5:
-        #     print('threshold: ', threshold)
-        #     print('k: ', k)
+        if i <5:
+            print('threshold: ', threshold)
+            print('k: ', k)
 
         #-----
 
