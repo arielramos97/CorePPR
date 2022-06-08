@@ -92,7 +92,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
    
         #Improved Exp2 - with range between [half k, k + half k]
         half_k = int(topk/2)
-        k_values = np.arange(half_k, topk + half_k)
+        k_values = np.arange(half_k, topk + half_k + 1)
+        
+        if i ==0:
+            print('k_values', k_values.shape)
         random_k  = np.random.choice(k_values)
 
         all_kn += random_k
