@@ -95,6 +95,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         k_values = np.arange(half_k, topk + half_k)
         random_k  = np.random.choice(k_values)
 
+        all_kn += random_k
+
         if i < 5:
             print('random_k: ', random_k)
 
