@@ -86,37 +86,30 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
     all_kn = 0
     for i in numba.prange(len(nodes)):
+
+
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
    
+        #Improved Exp2 - with range between [half k, k + half k]
+        half_k = int(topk/2)
+        k_values = np.arange(half_k, topk + half_k)
+        random_k  = np.random.choice(k_values)
 
-        #j tells you which node and val its pageRank value
-        # if i < 5:
-        #     print('j: ', j, ' val: ', val)
-        #     print('len j: ', len(j), 'len val: ', len(val))
-        #     print('sum: ', sum(val))
+        if i < 5:
+            print('random_k: ', random_k)
 
 
         j_np, val_np = np.array(j), np.array(val)
 
-        x = np.arange(0, len(val) - 1)  #Size is len of val minus largest element
-        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        idx_topk = np.argsort(val_np)[-random_k:]
 
-        y = val_np[idx_y]
-        y = y[1:]    #ignore largest element (root node)
-
-        kn = get_kn(x, y, 8)
-        all_kn += kn
-
-        # if i==1:
-        #     print(val)
-
-        if i <5:
-            print('k: ', kn)
-        # idx_topk = np.argsort(val_np)[-topk:]
-        idx_topk = idx_y[0:kn]
-
-        
-
+        # x = np.arange(0, len(val) - 1)  #Size is len of val minus largest element
+        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        # y = val_np[idx_y]
+        # y = y[1:]    #ignore largest element (root node)
+        # kn = get_kn(x, y, 8)
+        # all_kn += kn
+        # idx_topk = idx_y[0:kn]
 
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
