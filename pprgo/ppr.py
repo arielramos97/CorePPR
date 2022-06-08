@@ -82,31 +82,18 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
 
-    #EXPERIMENT 6
-
-    all_kn = 0
+    # all_kn = 0
     for i in numba.prange(len(nodes)):
 
 
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-   
-        #Improved Exp2 - with range between [half k, k + half k]
-        half_k = int(topk/2)
-        k_values = np.arange(half_k, topk + half_k + 1)
-        
-        if i ==0:
-            print('k_values', k_values.shape)
-        random_k  = np.random.choice(k_values)
-
-        all_kn += random_k
-
-        if i < 5:
-            print('random_k: ', random_k)
-
 
         j_np, val_np = np.array(j), np.array(val)
+        idx_topk = np.argsort(val_np)[-topk:]
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
+   
 
-        idx_topk = np.argsort(val_np)[-random_k:]
 
         # x = np.arange(0, len(val) - 1)  #Size is len of val minus largest element
         # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
@@ -116,10 +103,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         # all_kn += kn
         # idx_topk = idx_y[0:kn]
 
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+        # js[i] = j_np[idx_topk]
+        # vals[i] = val_np[idx_topk]
     
-    print('Mean kn: ', int(all_kn/len(nodes)))
+    # print('Mean kn: ', int(all_kn/len(nodes)))
     return js, vals
 
 
