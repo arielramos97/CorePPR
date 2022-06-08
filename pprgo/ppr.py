@@ -3,6 +3,8 @@ import numpy as np
 import scipy.sparse as sp
 from sklearn import neighbors
 import random
+from scipy.signal import savgol_filter
+
 
 from kneed import KneeLocator
 
@@ -69,7 +71,7 @@ def filter_mask(arr, threshold):
     return arr[arr > threshold]
 
 # @numba.njit(cache=True)
-def get_kn(x, y, S):
+def get_kn(x, y, S=1):
     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
     return kn.knee + 1 #Recover ignored element
     
@@ -82,31 +84,55 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
 
-    # all_kn = 0
+    all_kn = 0
     for i in numba.prange(len(nodes)):
 
 
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-
         j_np, val_np = np.array(j), np.array(val)
-        idx_topk = np.argsort(val_np)[-topk:]
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
-   
 
 
-        # x = np.arange(0, len(val) - 1)  #Size is len of val minus largest element
-        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
-        # y = val_np[idx_y]
-        # y = y[1:]    #ignore largest element (root node)
-        # kn = get_kn(x, y, 8)
-        # all_kn += kn
-        # idx_topk = idx_y[0:kn]
+        #BASELINE--------
 
+        # idx_topk = np.argsort(val_np)[-58:]
+        # all_kn += topk
         # js[i] = j_np[idx_topk]
         # vals[i] = val_np[idx_topk]
+
+
+        #----------------
+
+        #EXP6 with smoothed curve------- 
+
+        ignore = 0
+        x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
+        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        y = val_np[idx_y]
+        y = y[ignore:]    #ignore largest element (root node)
+
+        half_length = int(len(val)/2)
+        if half_length % 2 == 0:
+            window = half_length + 1
+        else:
+            window = half_length
+
+        smoothed_y = savgol_filter(y, window, 1)
+
+        kn = get_kn(x, smoothed_y)
+
+        if i < 5:
+            print('kn: ', kn)
+
+        all_kn += kn
+
+        idx_topk = idx_y[0:kn]
+
+
+        #----------------
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
     
-    # print('Mean kn: ', int(all_kn/len(nodes)))
+    print('Mean kn: ', int(all_kn/len(nodes)))
     return js, vals
 
 
