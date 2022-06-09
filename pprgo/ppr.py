@@ -94,38 +94,38 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         #BASELINE--------
 
-        # idx_topk = np.argsort(val_np)[-58:]
-        # all_kn += topk
-        # js[i] = j_np[idx_topk]
-        # vals[i] = val_np[idx_topk]
+        idx_topk = np.argsort(val_np)[-58:]
+        all_kn += topk
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
 
 
         #----------------
 
         #EXP6 with smoothed curve------- 
 
-        ignore = 0
-        x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
-        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
-        y = val_np[idx_y]
-        y = y[ignore:]    #ignore largest element (root node)
+        # ignore = 0
+        # x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
+        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        # y = val_np[idx_y]
+        # y = y[ignore:]    #ignore largest element (root node)
 
-        half_length = int(len(val)/2)
-        if half_length % 2 == 0:
-            window = half_length + 1
-        else:
-            window = half_length
+        # half_length = int(len(val)/2)
+        # if half_length % 2 == 0:
+        #     window = half_length + 1
+        # else:
+        #     window = half_length
 
-        smoothed_y = savgol_filter(y, window, 1)
+        # smoothed_y = savgol_filter(y, window, 1)
 
-        kn = get_kn(x, smoothed_y)
+        # kn = get_kn(x, smoothed_y)
 
-        if i < 5:
-            print('kn: ', kn)
+        # if i < 5:
+        #     print('kn: ', kn)
 
-        all_kn += kn
+        # all_kn += kn
 
-        idx_topk = idx_y[0:kn]
+        # idx_topk = idx_y[0:kn]
 
 
         #----------------
