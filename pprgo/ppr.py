@@ -113,7 +113,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
         y = val_np[idx_y]
         y = y[ignore:]    #ignore largest element (root node)
 
-        half_length = int(len(val) * 0.10)
+        half_length = 3 #int(len(val) * 0.10)
 
         # if len(y) <=20:
         #     print(val)
