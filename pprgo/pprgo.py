@@ -130,8 +130,9 @@ class PPRGo:
 
         #Caclulate predictions_proba --> for auc curve
         predictions_proba = tf.nn.softmax(logits)
+        predictions_proba = predictions_proba.eval(session=sess)
 
-        return predictions, predictions_proba.eval(session=sess), time_logits, time_propagation
+        return predictions, time_logits, time_propagation
 
     def get_vars(self, sess):
         return sess.run(tf.trainable_variables())
