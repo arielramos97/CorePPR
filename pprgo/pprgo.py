@@ -123,10 +123,12 @@ class PPRGo:
                 logits = deg_row_inv_alpha[:, None] * (adj_matrix @ logits) + alpha * local_logits
         else:
             raise ValueError(f"Unknown PPR normalization: {ppr_normalization}")
+
+
         predictions = logits.argmax(1)
         time_propagation = time.time() - start
 
-        return predictions, time_logits, time_propagation
+        return predictions, logits, time_logits, time_propagation
 
     def get_vars(self, sess):
         return sess.run(tf.trainable_variables())
