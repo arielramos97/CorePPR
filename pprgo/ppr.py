@@ -94,7 +94,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         #BASELINE--------
 
-        idx_topk = np.argsort(val_np)[-58:]
+        idx_topk = np.argsort(val_np)[-topk:]
         all_kn += topk
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
