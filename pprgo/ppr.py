@@ -115,8 +115,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         half_length = int(len(val) * 0.10)
 
-        if len(y) <=20:
-            print(val)
+        # if len(y) <=20:
+        #     print(val)
 
         if half_length % 2 == 0:
             window = half_length + 1
