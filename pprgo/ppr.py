@@ -115,10 +115,16 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         half_length = int(len(val) * 0.10)
 
+        if len(y) <=20:
+            print(val)
+
         if half_length % 2 == 0:
             window = half_length + 1
         else:
             window = half_length
+
+        if window <= 1:
+            window = 3
 
         smoothed_y = savgol_filter(y, window, 1)
 
