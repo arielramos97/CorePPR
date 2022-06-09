@@ -129,8 +129,8 @@ class PPRGo:
         time_propagation = time.time() - start
 
         #Caclulate predictions_proba --> for auc curve
-        predictions_proba = tf.nn.softmax(logits)
-        predictions_proba = predictions_proba.eval(session=sess)
+        # predictions_proba = tf.nn.softmax(logits)
+        # predictions_proba = predictions_proba.eval(session=sess)
 
         return predictions, time_logits, time_propagation
 
