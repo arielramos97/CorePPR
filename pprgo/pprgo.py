@@ -128,7 +128,10 @@ class PPRGo:
         predictions = logits.argmax(1)
         time_propagation = time.time() - start
 
-        return predictions, logits, time_logits, time_propagation
+
+        predictions_proba = tf.nn.softmax(logits)
+
+        return predictions, predictions_proba, time_logits, time_propagation
 
     def get_vars(self, sess):
         return sess.run(tf.trainable_variables())
