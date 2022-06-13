@@ -1,11 +1,9 @@
 import numba
 import numpy as np
 import scipy.sparse as sp
-from sklearn import neighbors
-import random
+
+
 from scipy.signal import savgol_filter
-
-
 from kneed import KneeLocator
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
@@ -73,11 +71,11 @@ def filter_mask(arr, threshold):
 # @numba.njit(cache=True)
 def get_kn(x, y, S=1):
     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
-    return kn.knee + 1 #Recover ignored element
+    return kn.knee 
     
 
 # @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_window=None):
 
     
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
@@ -93,11 +91,11 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
 
         #BASELINE--------
-        topk =14
-        idx_topk = np.argsort(val_np)[-topk:]
-        all_kn += topk
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+        # topk =14
+        # idx_topk = np.argsort(val_np)[-topk:]
+        # all_kn += topk
+        # js[i] = j_np[idx_topk]
+        # vals[i] = val_np[idx_topk]
 
         # if i % 10 == 0:
         #     print(val)
@@ -107,35 +105,32 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
 
         #EXP6 with smoothed curve------- 
 
-        # ignore = 1
-        # x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
-        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
-        # y = val_np[idx_y]
-        # y = y[ignore:]    #ignore largest element (root node)
+        ignore = 1
+        x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
+        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        y = val_np[idx_y]
+        y = y[ignore:]    #ignore largest element (root node)
 
-        # half_length = 3 #int(len(val) * 0.10)
+    
+        if k_window % 2 == 0:
+            k_window += 1
 
-        # # if len(y) <=20:
-        # #     print(val)
+        if k_window <= 1:
+            k_window = 3
 
-        # if half_length % 2 == 0:
-        #     window = half_length + 1
-        # else:
-        #     window = half_length
+        if i ==0:
+            print('Using window: ', k_window)
 
-        # if window <= 1:
-        #     window = 3
+        smoothed_y = savgol_filter(y, k_window, 1)
 
-        # smoothed_y = savgol_filter(y, window, 1)
+        kn = get_kn(x, smoothed_y) + 1 #recover ignored element
 
-        # kn = get_kn(x, smoothed_y)
+        if i < 5:
+            print('kn: ', kn)
 
-        # if i < 5:
-        #     print('kn: ', kn)
+        all_kn += kn
 
-        # all_kn += kn
-
-        # idx_topk = idx_y[0:kn]
+        idx_topk = idx_y[0:kn]
 
 
         #----------------
@@ -146,14 +141,14 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk):
     return js, vals
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, k_window=None):
     """Calculate the PPR matrix approximately using Anderson."""
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
 
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk)
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, k_window=k_window)
 
     
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
@@ -165,10 +160,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row'):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', k_window=None):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk).tocsr()
+    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, k_window=k_window).tocsr()
 
 
     if normalization == 'sym':
