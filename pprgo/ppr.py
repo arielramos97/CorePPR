@@ -83,7 +83,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
 
     all_kn = 0
-    truncated_window = 0
+    truncated_S = 0
     for i in numba.prange(len(nodes)):
 
 
@@ -113,19 +113,26 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         y = y[ignore:]    #ignore largest element (root node)
 
     
-        if k_window % 2 == 0:
-            k_window += 1
+        # if k_window % 2 == 0:
+        #     k_window += 1
 
-        if k_window >= len(y):
-            truncated_window +=1
-            k_window = 5
+        # if k_window >= len(y):
+        #     truncated_window +=1
+        #     k_window = 5
 
+        S = k_window
+         
         if i ==0:
-            print('Using window: ', k_window)
+            print('Using S: ', S)
 
-        smoothed_y = savgol_filter(y, k_window, 1)
 
-        kn = get_kn(x, smoothed_y) + 1 #recover ignored element
+        # smoothed_y = savgol_filter(y, k_window, 1)
+
+        try:
+            kn = get_kn(x, y, S=S) + 1 #recover ignored element
+        except:
+            kn = get_kn(x, y, S=1) + 1
+            truncated_S+=1
 
         if i < 5:
             print('kn: ', kn)
@@ -142,7 +149,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
     global mean_kn 
     mean_kn = int(all_kn/len(nodes))
     print('Mean kn: ', mean_kn)
-    print('Truncated windows: ', truncated_window, ' over ', len(nodes), ' nodes')
+    print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
     return js, vals
 
 
