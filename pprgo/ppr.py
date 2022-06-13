@@ -83,6 +83,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
 
     all_kn = 0
+    truncated_window = 0
     for i in numba.prange(len(nodes)):
 
 
@@ -116,6 +117,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
             k_window += 1
 
         if k_window >= len(y):
+            truncated_window +=1
             k_window = 5
 
         if i ==0:
@@ -138,6 +140,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         vals[i] = val_np[idx_topk]
     
     print('Mean kn: ', int(all_kn/len(nodes)))
+    print('Truncated windows: ', truncated_window, ' over ', len(nodes), ' nodes')
     return js, vals
 
 
