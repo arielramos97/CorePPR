@@ -139,7 +139,9 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
     
-    print('Mean kn: ', int(all_kn/len(nodes)))
+    global mean_kn 
+    mean_kn = int(all_kn/len(nodes))
+    print('Mean kn: ', mean_kn)
     print('Truncated windows: ', truncated_window, ' over ', len(nodes), ' nodes')
     return js, vals
 
@@ -193,4 +195,4 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', k_wi
     else:
         raise ValueError(f"Unknown PPR normalization: {normalization}")
 
-    return topk_matrix
+    return topk_matrix, mean_kn
