@@ -115,8 +115,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         if k_window % 2 == 0:
             k_window += 1
 
-        if k_window <= 1:
-            k_window = 3
+        if k_window >= len(y):
+            k_window = 5
 
         if i ==0:
             print('Using window: ', k_window)
