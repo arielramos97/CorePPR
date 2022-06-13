@@ -105,9 +105,22 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
         #EXP6 with smoothed curve------- 
 
-        ignore = 1
+        if len(val) <10:
+            idx_topk = np.argsort(val_np)
+            js[i] = j_np[idx_topk]
+            vals[i] = val_np[idx_topk]
+            continue
+
+
+        ignore = 0
         x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
+
+        
         idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+
+        if i ==0:
+            print('val: ', val, ' len val: ', len(val))
+            print('idx_y: ', idx_y.shape)
         y = val_np[idx_y]
         y = y[ignore:]    #ignore largest element (root node)
 
@@ -120,13 +133,11 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         #     truncated_window +=1
         #     k_window = 5
 
-
-
-
         S = k_window
          
         if i ==0:
             print('Using S: ', S)
+            print('y shape: ', y.shape)
 
 
         # smoothed_y = savgol_filter(y, k_window, 1)
@@ -134,6 +145,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         try:
             kn = get_kn(x, y, S=S) + 1 #recover ignored element
         except:
+            print(val)
             kn = get_kn(x, y, S=1) + 1
             truncated_S+=1
 
