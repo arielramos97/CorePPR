@@ -93,10 +93,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
 
         #BASELINE--------
-        # idx_topk = np.argsort(val_np)[-topk:]
-        # all_kn += topk
-        # js[i] = j_np[idx_topk]
-        # vals[i] = val_np[idx_topk]
+        idx_topk = np.argsort(val_np)[-topk:]
+        all_kn += topk
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
 
         # if i % 10 == 0:
         #     print(val)
@@ -106,24 +106,24 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
         #EXP6 with smoothed curve------- 
 
-        if len(val) <10:
-            idx_topk = np.argsort(val_np)
-            js[i] = j_np[idx_topk]
-            vals[i] = val_np[idx_topk]
-            continue
+        # if len(val) <10:
+        #     idx_topk = np.argsort(val_np)
+        #     js[i] = j_np[idx_topk]
+        #     vals[i] = val_np[idx_topk]
+        #     continue
 
 
-        ignore = 0
-        x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
+        # ignore = 1
+        # x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
 
         
-        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
 
-        if i ==0:
-            print('val: ', val, ' len val: ', len(val))
-            print('idx_y: ', idx_y.shape)
-        y = val_np[idx_y]
-        y = y[ignore:]    #ignore largest element (root node)
+        # if i ==0:
+        #     print('val: ', val, ' len val: ', len(val))
+        #     print('idx_y: ', idx_y.shape)
+        # y = val_np[idx_y]
+        # y = y[ignore:]    #ignore largest element (root node)
 
 
     
@@ -134,29 +134,29 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         #     truncated_window +=1
         #     k_window = 5
 
-        S = k_window
+        # S = k_window
          
-        if i ==0:
-            print('Using S: ', S)
-            print('y shape: ', y.shape)
+        # if i ==0:
+        #     print('Using S: ', S)
+        #     print('y shape: ', y.shape)
 
 
         # smoothed_y = savgol_filter(y, k_window, 1)
 
-        try:
-            kn = get_kn(x, y, S=S) + 1 #recover ignored element
-        except:
-            print(val)
-            kn = get_kn(x, y, S=1) + 1
-            truncated_S+=1
+        # try:
+        #     kn = get_kn(x, y, S=S) + 1 #recover ignored element
+        # except:
+        #     print(val)
+        #     kn = get_kn(x, y, S=1) + 1
+        #     truncated_S+=1
 
-        if i < 5:
-            print('kn: ', kn)
+        # if i < 5:
+        #     print('kn: ', kn)
 
-        all_kn += kn
-        len_y += len(y)
+        # all_kn += kn
+        # len_y += len(y)
 
-        idx_topk = idx_y[0:kn]
+        # idx_topk = idx_y[0:kn]
 
 
         #----------------
@@ -166,7 +166,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
     global mean_kn 
     mean_kn = int(all_kn/len(nodes))
     print('Mean kn: ', mean_kn)
-    print('Overall len y: ', int(len_y/len(nodes)))
+    # print('Overall len y: ', int(len_y/len(nodes)))
     print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
     return js, vals
 
