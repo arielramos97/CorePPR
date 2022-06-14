@@ -42,6 +42,10 @@ class PPRGo:
                                                    self.batch_idx[:, None],
                                                    self.logits * self.batch_pprw[:, None])
 
+         #wieghted logits x normalized A       
+         # Ouput * weight matrix    
+         # New W that needs to be updated                               
+
         loss_per_node = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.batch_labels,
                                                                        logits=weighted_logits)
 
