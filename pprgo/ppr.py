@@ -142,7 +142,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
 
         #If there is ACTUALLY a knee point
         if i < 5:
-            print('kn: ', kn)
+            print('kn: ', kn.knee)
 
         kn = kn.knee +1 # + 1 to recover ignored first element
 
