@@ -1,5 +1,2 @@
-import numpy as np
+from sknetwork.topology import get_connected_components
 
-x = np.arange(0,10)
-
-print(x[-100:])
