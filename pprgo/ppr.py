@@ -75,7 +75,7 @@ def get_kn(x, y, S=1):
     
 
 # @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_window=None):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=None):
 
     
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
@@ -92,12 +92,15 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
         j_np, val_np = np.array(j), np.array(val)
 
 
-        #BASELINE--------
+        #For statistics (min, max, mean) purposes
         len_y.append(len(val))
-        idx_topk = np.argsort(val_np)[-topk:]
-        all_kn += topk
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+
+
+        #BASELINE--------
+        # idx_topk = np.argsort(val_np)[-topk:]
+        # all_kn += topk
+        # js[i] = j_np[idx_topk]
+        # vals[i] = val_np[idx_topk]
 
 
         # if i % 10 == 0:
@@ -106,59 +109,46 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
 
         #----------------
 
-        #EXP6 with smoothed curve------- 
+        #if len < 3 --> TAKE ALL
 
-        # if len(val) <10:
-        #     idx_topk = np.argsort(val_np)
-        #     js[i] = j_np[idx_topk]
-        #     vals[i] = val_np[idx_topk]
-        #     continue
+        if len(val) <= 3:
+            idx_topk = np.argsort(val_np)
+            all_kn += len(val)
+            js[i] = j_np[idx_topk]
+            vals[i] = val_np[idx_topk]
+            if i < 5:
+                print('kn: ', len(val))
+            continue
 
+        #Ignore first entry (largest)
+        ignore = 1
+        x = np.arange(0, len(val) - ignore) 
+        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        y = val_np[idx_y]
+        y = y[ignore:]    #ignore largest element (root node)
 
-        # ignore = 1
-        # x = np.arange(0, len(val) - ignore)  #Size is 'len of val' minus largest element
-
+        #Else compute the knee point
+        kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S, interp_method='polynomial')
         
-        # idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+        #If no knee point --> TAKE ALL
+        if kn.knee is None:
+            idx_topk = np.argsort(val_np)
+            all_kn += len(val)
+            js[i] = j_np[idx_topk]
+            vals[i] = val_np[idx_topk]
+            if i < 5:
+                print('kn: ', len(val))
+            continue
 
-        # if i ==0:
-        #     print('val: ', val, ' len val: ', len(val))
-        #     print('idx_y: ', idx_y.shape)
-        # y = val_np[idx_y]
-        # y = y[ignore:]    #ignore largest element (root node)
+        #If there is ACTUALLY a knee point
+        if i < 5:
+            print('kn: ', kn)
 
+        kn = kn.knee +1 # + 1 to recover ignored first element
 
-    
-        # if k_window % 2 == 0:
-        #     k_window += 1
+        all_kn += kn
 
-        # if k_window >= len(y):
-        #     truncated_window +=1
-        #     k_window = 5
-
-        # S = k_window
-         
-        # if i ==0:
-        #     print('Using S: ', S)
-        #     print('y shape: ', y.shape)
-
-
-        # smoothed_y = savgol_filter(y, k_window, 1)
-
-        # try:
-        #     kn = get_kn(x, y, S=S) + 1 #recover ignored element
-        # except:
-        #     print(val)
-        #     kn = get_kn(x, y, S=1) + 1
-        #     truncated_S+=1
-
-        # if i < 5:
-        #     print('kn: ', kn)
-
-        # all_kn += kn
-        # len_y += len(y)
-
-        # idx_topk = idx_y[0:kn]
+        idx_topk = idx_y[0:kn]
 
 
         #----------------
@@ -173,14 +163,14 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, k_
     return js, vals
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, k_window=None):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, S=None):
     """Calculate the PPR matrix approximately using Anderson."""
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
 
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, k_window=k_window)
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, S=S)
 
     
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
@@ -192,10 +182,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', k_window=None):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', S=None):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, k_window=k_window).tocsr()
+    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, S=S).tocsr()
 
 
     if normalization == 'sym':
