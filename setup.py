@@ -7,8 +7,8 @@ install_requires = [
         "kneed",
         "scipy>=1.3",
         "numba>=0.49",
-        "tensorflow<2.0",
-        # "tensorflow-gpu<2.0",
+        # "tensorflow<2.0",
+        "tensorflow-gpu<2.0",
         "scikit-learn",
         "sacred",
         "seml"
