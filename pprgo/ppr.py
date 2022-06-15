@@ -131,7 +131,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S, interp_method='polynomial')
         
         #If no knee point --> TAKE ALL
-        if kn.knee is None:
+        if kn.knee is None or kn.knee ==0:
             idx_topk = np.argsort(val_np)
             all_kn += len(val)
             js[i] = j_np[idx_topk]
