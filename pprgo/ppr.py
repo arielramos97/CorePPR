@@ -97,10 +97,11 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
 
 
         #BASELINE--------
-        # idx_topk = np.argsort(val_np)[-topk:]
-        # all_kn += topk
-        # js[i] = j_np[idx_topk]
-        # vals[i] = val_np[idx_topk]
+        idx_topk = np.argsort(val_np)[-topk:]
+        all_kn += topk
+        js[i] = j_np[idx_topk]
+        vals[i] = val_np[idx_topk]
+        continue
 
 
         # if i % 10 == 0:
@@ -156,7 +157,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         vals[i] = val_np[idx_topk]
     
     global mean_kn 
-    mean_kn = int(all_kn/len(nodes))
+    mean_kn = all_kn/len(nodes)
     print('Mean kn: ', mean_kn)
     print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
     print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
