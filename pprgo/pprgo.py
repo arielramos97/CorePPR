@@ -42,10 +42,6 @@ class PPRGo:
                                                    self.batch_idx[:, None],
                                                    self.logits * self.batch_pprw[:, None])
 
-         #wieghted logits x normalized A       
-         # Ouput * weight matrix    
-         # New W that needs to be updated                               
-
         loss_per_node = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.batch_labels,
                                                                        logits=weighted_logits)
 
@@ -127,14 +123,8 @@ class PPRGo:
                 logits = deg_row_inv_alpha[:, None] * (adj_matrix @ logits) + alpha * local_logits
         else:
             raise ValueError(f"Unknown PPR normalization: {ppr_normalization}")
-
-
         predictions = logits.argmax(1)
         time_propagation = time.time() - start
-
-        #Caclulate predictions_proba --> for auc curve
-        # predictions_proba = tf.nn.softmax(logits)
-        # predictions_proba = predictions_proba.eval(session=sess)
 
         return predictions, time_logits, time_propagation
 

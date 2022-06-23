@@ -45,6 +45,7 @@ class SparseRowIndexer:
         self.indices = np.array(indices)
         self.indptr = np.array(indptr)
         self.n_columns = csr_matrix.shape[1]
+        self.n_rows = csr_matrix.shape[0]
 
     def __getitem__(self, row_selector):
         data = np.concatenate(self.data[row_selector])
