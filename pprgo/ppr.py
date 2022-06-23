@@ -1,3 +1,4 @@
+from math import gamma
 import numba
 import numpy as np
 import scipy.sparse as sp
@@ -75,7 +76,7 @@ def get_kn(x, y, S=1):
     
 
 # @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=None):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=None, gamma=0.1):
 
     
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
@@ -85,6 +86,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
     all_kn = 0
     truncated_S = 0
     len_y = []
+
+    all_nodes = np.max(indices) + 1
+    ppr_general = np.zeros(all_nodes, dtype=np.float32)
+
     for i in numba.prange(len(nodes)):
 
 
@@ -99,13 +104,20 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         #BASELINE--------
         idx_topk = np.argsort(val_np)[-topk:]
         all_kn += topk
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+        js[i] = j_np
+        vals[i] = val_np
+        # js[i] = j_np[idx_topk]
+        # vals[i] = val_np[idx_topk]
+
+        if i ==0:
+            print('js top k: ', j_np[idx_topk])
+
+        #Filter indexes 
+        # filtered_values = np.where(j_np < len(nodes))
+
+        ppr_general[j_np] += val_np
+
         continue
-
-
-        # if i % 10 == 0:
-        #     print(val)
 
 
         #----------------
@@ -156,22 +168,43 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         js[i] = j_np[idx_topk]
         vals[i] = val_np[idx_topk]
     
+    #Collect general ppr (average of all personalised ppr values)
+    ppr_general = ppr_general/len(nodes)
+
+    js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
+    vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
+
+    for i in range(len(nodes)):
+        
+        left = vals[i]
+        right = ppr_general[js[i]]
+
+        new_exp = (gamma*left) + (1-gamma)*right
+
+        idx_topk = np.argsort(new_exp)[-topk:]
+
+        js_weighted[i] = js[i][idx_topk]
+        vals_weighted[i] = vals[i][idx_topk]
+
+        if i ==0:
+            print('js_weighted[i]: ', js_weighted[i])
+
     global mean_kn 
     mean_kn = all_kn/len(nodes)
     print('Mean kn: ', mean_kn)
     print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
     print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
-    return js, vals
+    return js_weighted, vals_weighted
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, S=None):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, S=None, gamma=0.1):
     """Calculate the PPR matrix approximately using Anderson."""
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
 
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, S=S)
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, S=S, gamma=gamma)
 
     
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
@@ -183,10 +216,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', S=None):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', S=None, gamma=0.1):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, S=S).tocsr()
+    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, S=S, gamma=gamma).tocsr()
 
 
     if normalization == 'sym':
