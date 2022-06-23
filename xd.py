@@ -2,7 +2,7 @@ import numpy as np
 from scipy import sparse
 
 
-x = 4.7602475e-04
-y = 0.29002368
+x = [1, 2,3]
+y = 3
 
-print(x*y)
+print(x*3)

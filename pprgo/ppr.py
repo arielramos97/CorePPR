@@ -109,8 +109,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         # js[i] = j_np[idx_topk]
         # vals[i] = val_np[idx_topk]
 
-        if i ==0:
-            print('js top k: ', j_np[idx_topk])
+        # if i ==0:
+        #     print('js top k: ', j_np[idx_topk])
 
         #Filter indexes 
         # filtered_values = np.where(j_np < len(nodes))
@@ -186,8 +186,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         js_weighted[i] = js[i][idx_topk]
         vals_weighted[i] = vals[i][idx_topk]
 
-        if i ==0:
-            print('js_weighted[i]: ', js_weighted[i])
+        # if i ==0:
+        #     print('js_weighted[i]: ', js_weighted[i])
 
     global mean_kn 
     mean_kn = all_kn/len(nodes)
