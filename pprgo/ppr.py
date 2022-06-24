@@ -205,10 +205,9 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         js_weighted[i] = js[i][idx_topk]
         vals_weighted[i] = vals[i][idx_topk]
 
-        if i ==0:
-
-            print('js_weighted[i]: ', js_weighted[i])
-            print('vals_weighted[i]: ', vals_weighted[i])
+        # if i ==0:
+        #     print('js_weighted[i]: ', js_weighted[i])
+        #     print('vals_weighted[i]: ', vals_weighted[i])
 
 
     global mean_kn 
