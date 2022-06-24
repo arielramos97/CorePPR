@@ -2,6 +2,7 @@ from math import gamma
 import numba
 import numpy as np
 import scipy.sparse as sp
+import igraph
 
 
 from scipy.signal import savgol_filter
@@ -63,7 +64,7 @@ def three_hop_neighbourhood(node, indptr, indices):
 
     hop_np = np.array(list(hop))
     hop_np = hop_np.astype(np.int64)
-    return list(hop_np)
+    return hop_np
 
 @numba.njit(cache=True)
 def filter_mask(arr, threshold):
@@ -76,7 +77,7 @@ def get_kn(x, y, S=1):
     
 
 # @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=None, gamma=0.1):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, S=None, gamma=0.1):
 
     
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
@@ -92,6 +93,25 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
 
     for i in numba.prange(len(nodes)):
 
+        # #Get core value of this nodes
+        # k_core = core_numbers[hop_3]
+        # if i ==0:
+        #     print('k_core: ', k_core.tolist())
+
+        # #Normalize values
+        # k_core_normalised = k_core / np.sum(k_core)
+
+        # if i ==0:
+        #     print('k_core_normalised: ', k_core_normalised.tolist())
+
+        
+
+        # #sort them
+        # idx_topk = np.argsort(k_core_normalised)[-topk:]
+        # if i ==0:
+        #     print('sorted k core: ', k_core[idx_topk].tolist())
+        # vals[i] = k_core[idx_topk]
+
 
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
         j_np, val_np = np.array(j), np.array(val)
@@ -106,16 +126,12 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         all_kn += topk
         js[i] = j_np
         vals[i] = val_np
+
+
         # js[i] = j_np[idx_topk]
         # vals[i] = val_np[idx_topk]
 
-        # if i ==0:
-        #     print('js top k: ', j_np[idx_topk])
-
-        #Filter indexes 
-        # filtered_values = np.where(j_np < len(nodes))
-
-        ppr_general[j_np] += val_np
+        # ppr_general[j_np] += val_np
 
         continue
 
@@ -169,15 +185,18 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         vals[i] = val_np[idx_topk]
     
     #Collect general ppr (average of all personalised ppr values)
-    ppr_general = ppr_general/len(nodes)
+    # ppr_general = ppr_general/len(nodes)
 
     js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
     for i in range(len(nodes)):
-        
         left = vals[i]
-        right = ppr_general[js[i]]
+        right = core_numbers[js[i]]
+        right = right / sum(right)
+
+        
+    #     right = ppr_general[js[i]]
 
         new_exp = (gamma*left) + (1-gamma)*right
 
@@ -186,25 +205,45 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, S=
         js_weighted[i] = js[i][idx_topk]
         vals_weighted[i] = vals[i][idx_topk]
 
-        # if i ==0:
-        #     print('js_weighted[i]: ', js_weighted[i])
+        if i ==0:
+
+            print('js_weighted[i]: ', js_weighted[i])
+            print('vals_weighted[i]: ', vals_weighted[i])
+
 
     global mean_kn 
     mean_kn = all_kn/len(nodes)
     print('Mean kn: ', mean_kn)
     print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
     print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
+    # return js_weighted, vals_weighted
     return js_weighted, vals_weighted
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, S=None, gamma=0.1):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, S=None, gamma=0.1):
     """Calculate the PPR matrix approximately using Anderson."""
+
+    print('ppr_topk adj matrix: ', adj_matrix.shape)
+
+    # #Build grpah using igraph
+    # g = igraph.Graph.Adjacency((adj_matrix.todense()> 0).tolist())
+    # core_numbers = np.array(g.coreness())
+    # print('core_numbers: ', core_numbers.shape)
+    # max_c_n = np.max(core_numbers)
+    # print('max core: ', max_c_n)
+
+    # idx = np.where(core_numbers==max_c_n)
+
+    # print('idx: ', idx)
+    # print('core_numbers[idx]', core_numbers[idx].shape, core_numbers[idx])
+
+    #Get coreness
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
 
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, S=S, gamma=gamma)
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, core_numbers, S=S, gamma=gamma)
 
     
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
@@ -216,10 +255,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, normalization='row', S=None, gamma=0.1):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row', S=None, gamma=0.1):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, S=S, gamma=gamma).tocsr()
+    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, S=S, gamma=gamma).tocsr()
 
 
     if normalization == 'sym':
