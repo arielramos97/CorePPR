@@ -2,7 +2,7 @@ import numpy as np
 from scipy import sparse
 
 
-x = [1, 2,3]
-y = 3
+x = np.array([1, 2, 3])
+y = np.array([3, 3, 3])
 
-print(x*3)
+print(x-y)

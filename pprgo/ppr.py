@@ -131,7 +131,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         # js[i] = j_np[idx_topk]
         # vals[i] = val_np[idx_topk]
 
-        # ppr_general[j_np] += val_np
+        ppr_general[j_np] += val_np
 
         continue
 
@@ -185,29 +185,59 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         vals[i] = val_np[idx_topk]
     
     #Collect general ppr (average of all personalised ppr values)
-    # ppr_general = ppr_general/len(nodes)
+    ppr_general = ppr_general/len(nodes)
 
     js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
     for i in range(len(nodes)):
         left = vals[i]
-        right = core_numbers[js[i]]
-        right = right / sum(right)
+
+
+        #First sort pageRank values
+        idx_topk = np.argsort(vals[i])[-topk:]
+
+        j_ranked = js[i][idx_topk]
+        val_ranked = vals[i][idx_topk]
+
+        core = core_numbers[j_ranked]
+
+        if i == 0:
+            print('j_ranked: ', j_ranked)
+            print('core of j_ranked: ', core)
+
+
+        #Rank by core
+        idx_topk = np.argsort(core)[-topk:]
+
+        #Take the pageRank values in theres indeces
+
+        core = core / sum(core)
+
+        val_ranked = val_ranked + core
+
+        # right = 
+        # right = 
+        # right = ppr_general[js[i]]
 
         
     #     right = ppr_general[js[i]]
 
-        new_exp = (gamma*left) + (1-gamma)*right
+        # new_exp = (gamma*left) + (1-gamma)*right
+        # new_exp = left - right
+        # new_exp = new_exp/np.sum(new_exp)
 
-        idx_topk = np.argsort(new_exp)[-topk:]
+        # new_exp = (gamma*left) + (1-gamma)*core
 
-        js_weighted[i] = js[i][idx_topk]
-        vals_weighted[i] = vals[i][idx_topk]
+        # idx_topk = np.argsort(new_exp)[-topk:]
 
-        # if i ==0:
-        #     print('js_weighted[i]: ', js_weighted[i])
-        #     print('vals_weighted[i]: ', vals_weighted[i])
+        js_weighted[i] = j_ranked[idx_topk]
+        vals_weighted[i] = val_ranked[idx_topk]
+
+        if i ==0:
+            print('js[i]: ', j_ranked[idx_topk])
+            print('idx: ', idx_topk)
+            print('core top: ', core[idx_topk])
 
 
     global mean_kn 
@@ -222,7 +252,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, S=None, gamma=0.1):
     """Calculate the PPR matrix approximately using Anderson."""
 
-    print('ppr_topk adj matrix: ', adj_matrix.shape)
+    # print('ppr_topk adj matrix: ', adj_matrix.shape)
 
     # #Build grpah using igraph
     # g = igraph.Graph.Adjacency((adj_matrix.todense()> 0).tolist())
