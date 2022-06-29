@@ -93,6 +93,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
     for i in numba.prange(len(nodes)):
 
+       
+
         # #Get core value of this nodes
         # k_core = core_numbers[hop_3]
         # if i ==0:
@@ -116,6 +118,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
         j_np, val_np = np.array(j), np.array(val)
 
+        #Normalize pageRank values
+        val_np = val_np / np.sum(val_np)
 
         #For statistics (min, max, mean) purposes
         len_y.append(len(val))
@@ -190,59 +194,43 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
+    
+
     for i in range(len(nodes)):
-        left = vals[i]
 
 
         #First sort pageRank values
-        idx_topk = np.argsort(vals[i])[-topk:]
+        idx_topk_ppr = np.argsort(vals[i])[-topk:]
 
-        j_ranked = js[i][idx_topk]
-        val_ranked = vals[i][idx_topk]
+        j_ranked = js[i][idx_topk_ppr]
+        val_ranked = vals[i][idx_topk_ppr]
 
         core = core_numbers[j_ranked]
+         #Normalize core numbers
+        core = core/sum(core)
 
-        if i == 0:
-            print('j_ranked: ', j_ranked)
-            print('core of j_ranked: ', core)
+        new_exp = (gamma*val_ranked) + ((1-gamma)*core)
 
+        idx_topk = np.argsort(new_exp)[-topk:]
 
-        #Rank by core
-        idx_topk = np.argsort(core)[-topk:]
-
-        #Take the pageRank values in theres indeces
-
-        core = core / sum(core)
-
-        val_ranked = val_ranked + core
-
-        # right = 
-        # right = 
-        # right = ppr_general[js[i]]
-
-        
-    #     right = ppr_general[js[i]]
-
-        # new_exp = (gamma*left) + (1-gamma)*right
-        # new_exp = left - right
-        # new_exp = new_exp/np.sum(new_exp)
-
-        # new_exp = (gamma*left) + (1-gamma)*core
-
-        # idx_topk = np.argsort(new_exp)[-topk:]
 
         js_weighted[i] = j_ranked[idx_topk]
-        vals_weighted[i] = val_ranked[idx_topk]
+        vals_weighted[i] = new_exp[idx_topk]
 
-        if i ==0:
-            print('js[i]: ', j_ranked[idx_topk])
-            print('idx: ', idx_topk)
-            print('core top: ', core[idx_topk])
+        # if i == 90:
+        #     print('j_ranked: ', j_ranked[idx_topk].tolist())
+        #     print('new_exp: ', new_exp[idx_topk].tolist())
+
+        # if i ==0:
+        #     print('js[i]: ', j_ranked[idx_topk])
+        #     print('idx: ', idx_topk)
+        #     print('core top: ', core[idx_topk])
 
 
     global mean_kn 
     mean_kn = all_kn/len(nodes)
     print('Mean kn: ', mean_kn)
+    print('gamma: ', gamma)
     print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
     print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
     # return js_weighted, vals_weighted
