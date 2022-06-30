@@ -77,7 +77,7 @@ def get_kn(x, y, S=1):
     
 
 # @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, S=None, gamma=0.1):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, graph, S=None, gamma=0.1):
 
     
     js = [np.zeros(0, dtype=np.int64)] * len(nodes)
@@ -85,35 +85,12 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
 
     all_kn = 0
-    truncated_S = 0
     len_y = []
 
     all_nodes = np.max(indices) + 1
     ppr_general = np.zeros(all_nodes, dtype=np.float32)
 
     for i in numba.prange(len(nodes)):
-
-       
-
-        # #Get core value of this nodes
-        # k_core = core_numbers[hop_3]
-        # if i ==0:
-        #     print('k_core: ', k_core.tolist())
-
-        # #Normalize values
-        # k_core_normalised = k_core / np.sum(k_core)
-
-        # if i ==0:
-        #     print('k_core_normalised: ', k_core_normalised.tolist())
-
-        
-
-        # #sort them
-        # idx_topk = np.argsort(k_core_normalised)[-topk:]
-        # if i ==0:
-        #     print('sorted k core: ', k_core[idx_topk].tolist())
-        # vals[i] = k_core[idx_topk]
-
 
         j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
         j_np, val_np = np.array(j), np.array(val)
@@ -136,8 +113,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         # vals[i] = val_np[idx_topk]
 
         ppr_general[j_np] += val_np
-
         continue
+        
 
 
         #----------------
@@ -149,8 +126,6 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
             all_kn += len(val)
             js[i] = j_np[idx_topk]
             vals[i] = val_np[idx_topk]
-            if i < 5:
-                print('kn: ', len(val))
             continue
 
         #Ignore first entry (largest)
@@ -174,10 +149,12 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
             continue
 
         #If there is ACTUALLY a knee point
-        if i < 5:
-            print('kn: ', kn.knee)
+        
 
         kn = kn.knee +1 # + 1 to recover ignored first element
+
+        if i < 5:
+            print('kn: ', kn)
 
         all_kn += kn
 
@@ -198,6 +175,9 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
     for i in range(len(nodes)):
 
+        # if i < 5:
+        #     print('k in second loop: ', vals[i].shape[0])
+
 
         #First sort pageRank values
         idx_topk_ppr = np.argsort(vals[i])[-topk:]
@@ -205,11 +185,31 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         j_ranked = js[i][idx_topk_ppr]
         val_ranked = vals[i][idx_topk_ppr]
 
+        #Get shortest paths--------------------
+        shortest_paths = graph.get_shortest_paths(nodes[i], to=j_ranked)
+        shortest_paths = np.array([len(s_path) for s_path in shortest_paths])
+
+        # if i ==5:
+        #     print('shortest_paths: ', shortest_paths)
+
+        #Normalize short paths
+        shortest_paths = np.sum(shortest_paths) - shortest_paths
+        shortest_paths = shortest_paths/np.sum(shortest_paths)
+
+
+        # if i ==5:
+        #     print('shortest_paths: ', shortest_paths)
+
+        #-------------------
+
         core = core_numbers[j_ranked]
          #Normalize core numbers
         core = core/sum(core)
 
-        new_exp = (gamma*val_ranked) + ((1-gamma)*core)
+        #----------------------------------------
+
+
+        new_exp = (gamma*val_ranked) + ((1-gamma)*shortest_paths)
 
         idx_topk = np.argsort(new_exp)[-topk:]
 
@@ -217,14 +217,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         js_weighted[i] = j_ranked[idx_topk]
         vals_weighted[i] = new_exp[idx_topk]
 
-        # if i == 90:
-        #     print('j_ranked: ', j_ranked[idx_topk].tolist())
-        #     print('new_exp: ', new_exp[idx_topk].tolist())
 
-        # if i ==0:
-        #     print('js[i]: ', j_ranked[idx_topk])
-        #     print('idx: ', idx_topk)
-        #     print('core top: ', core[idx_topk])
+        # if i % 200 == 0:
+        #     print('vals_weighted[i]: ', i, vals_weighted[i].tolist())
+        
 
 
     global mean_kn 
@@ -232,12 +228,11 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     print('Mean kn: ', mean_kn)
     print('gamma: ', gamma)
     print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
-    print('Truncated windows: ', truncated_S, ' over ', len(nodes), ' nodes')
     # return js_weighted, vals_weighted
     return js_weighted, vals_weighted
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, S=None, gamma=0.1):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, graph, S=None, gamma=0.1):
     """Calculate the PPR matrix approximately using Anderson."""
 
     # print('ppr_topk adj matrix: ', adj_matrix.shape)
@@ -260,7 +255,7 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, S=None, gamm
     nnodes = adj_matrix.shape[0]
 
     neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, core_numbers, S=S, gamma=gamma)
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, core_numbers, graph, S=S, gamma=gamma)
 
     
     return construct_sparse(neighbors, weights, (len(nodes), nnodes))
@@ -272,10 +267,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row', S=None, gamma=0.1):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, normalization='row', S=None, gamma=0.1):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, S=S, gamma=gamma).tocsr()
+    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, S=S, gamma=gamma).tocsr()
 
 
     if normalization == 'sym':
