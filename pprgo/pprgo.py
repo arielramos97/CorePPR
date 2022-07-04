@@ -3,6 +3,8 @@ import logging
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
 import tensorflow.compat.v1 as tf
+import scipy.sparse as sp
+
 
 from .utils import sparse_feeder
 from .tf_utils import mixed_dropout
@@ -10,17 +12,22 @@ from .tf_utils import mixed_dropout
 
 class PPRGo:
     def __init__(self, d, nc, hidden_size, nlayers, lr,
-                 weight_decay, dropout, sparse_features=True):
+                 weight_decay, dropout, adj_matrix, intermediate_layer, sparse_features=True):
         self.nc = nc
         self.sparse_features = sparse_features
 
         if sparse_features:
             self.batch_feats = tf.sparse_placeholder(tf.float32, None, 'features')
+            self.batch_feats_adj = tf.sparse_placeholder(tf.float32, None, 'features')
         else:
             self.batch_feats = tf.placeholder(tf.float32, [None, d], 'features')
+            self.batch_feats_adj = tf.placeholder(tf.float32, [None, d], 'features')
         self.batch_pprw = tf.placeholder(tf.float32, [None], 'ppr_weights')
         self.batch_idx = tf.placeholder(tf.int32, [None], 'idx')
         self.batch_labels = tf.placeholder(tf.int32, [None], 'labels')
+
+        self.adj_idx = tf.placeholder(tf.int32, [None], 'adj_idx')
+        self.batch_adj_matrix = tf.placeholder(tf.float32, [None], 'adj_matrix')
 
         Ws = [tf.get_variable('W1', [d, hidden_size])]
         for i in range(nlayers - 2):
@@ -38,9 +45,44 @@ class PPRGo:
             h = tf.matmul(h_drop, W)
         self.logits = h
 
+
         weighted_logits = tf.tensor_scatter_nd_add(tf.zeros((tf.shape(self.batch_labels)[0], nc)),
                                                    self.batch_idx[:, None],
                                                    self.logits * self.batch_pprw[:, None])
+
+        # Add linear layer
+        # W = tf.get_variable(f'W{nlayers+1}', [nc, nc])
+        # Ws.append(W)
+        # h = tf.matmul(weighted_logits, W)
+        
+
+        # feats_drop_adj= mixed_dropout(self.batch_feats_adj, dropout)
+        # if sparse_features:
+        #     h = tf.sparse.sparse_dense_matmul(feats_drop_adj, Ws[0])
+        # else:
+        #     h = tf.matmul(feats_drop_adj, Ws[0])
+        # for W in Ws[1:]:
+        #     h = tf.nn.relu(h)
+        #     h_drop = tf.nn.dropout(h, rate=dropout)
+        #     h = tf.matmul(h_drop, W)
+        # self.logits_adj = h
+
+        
+        # w_1 = w_0 * self.batch_adj_matrix[:, None]
+        # self.w_1 = w_1
+
+        # adjacency_weighted_logits = tf.tensor_scatter_nd_add(weighted_logits, 
+        #                                             self.adj_idx[:, None], 
+        #                                             self.logits_adj * self.batch_adj_matrix[:, None])
+
+        #Final layer
+        # W = tf.get_variable(f'W{nlayers+1}', [intermediate_layer, nc])
+        # Ws.append(W)
+        # final_weights = tf.matmul(adjacency_weighted_logits, W)
+
+
+
+
 
         loss_per_node = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.batch_labels,
                                                                        logits=weighted_logits)
@@ -53,25 +95,32 @@ class PPRGo:
 
         self.cached = {}
 
-    def feed_for_batch(self, attr_matrix, ppr_matrix, labels, key=None):
+    def feed_for_batch(self, attr_matrix, ppr_matrix, labels, adj_matrix, key=None):
         if key is None:
-            return self.gen_feed(attr_matrix, ppr_matrix, labels)
+            return self.gen_feed(attr_matrix, ppr_matrix, labels, adj_matrix)
         else:
             if key in self.cached:
                 return self.cached[key]
             else:
-                feed = self.gen_feed(attr_matrix, ppr_matrix, labels)
+                feed = self.gen_feed(attr_matrix, ppr_matrix, labels, adj_matrix)
                 self.cached[key] = feed
                 return feed
 
-    def gen_feed(self, attr_matrix, ppr_matrix, labels):
+    def gen_feed(self, attr_matrix, ppr_matrix, labels, adj_matrix):
         source_idx, neighbor_idx = ppr_matrix.nonzero()
 
+        source_adj, neighbor_adj = adj_matrix.nonzero()
+
         batch_attr = attr_matrix[neighbor_idx]
+
+        batch_attr_adj = attr_matrix[neighbor_adj]
         feed = {
             self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
+            self.batch_feats_adj: sparse_feeder(batch_attr_adj) if self.sparse_features else batch_attr_adj,
             self.batch_pprw: ppr_matrix[source_idx, neighbor_idx].A1,
             self.batch_labels: labels,
+            self.batch_adj_matrix : adj_matrix[source_adj, neighbor_adj].A1,
+            self.adj_idx: source_adj,
             self.batch_idx: source_idx,
         }
         return feed
@@ -137,10 +186,21 @@ class PPRGo:
                 for i, var in enumerate(tf.trainable_variables())]
         sess.run(set_all)
 
+#Normalize adjacency matrix
+def calc_A_hat(adj_matrix: sp.spmatrix) -> sp.spmatrix:
+    nnodes = adj_matrix.shape[0]
+    A = adj_matrix + sp.eye(nnodes)
+    D_vec = np.sum(A, axis=1).A1
+    D_vec_invsqrt_corr = 1 / np.sqrt(D_vec)
+    D_invsqrt_corr = sp.diags(D_vec_invsqrt_corr)
+    return D_invsqrt_corr @ A @ D_invsqrt_corr
 
-def train(sess, model, attr_matrix, train_idx, val_idx, topk_train, topk_val, labels,
+def train(sess, model, attr_matrix, train_idx, val_idx, topk_train, topk_val, labels, adj_matrix,
           max_epochs=200, batch_size=512, batch_mult_val=4,
           eval_step=1, early_stop=False, patience=50, ex=None):
+
+    normalized_adj_matrix = calc_A_hat(adj_matrix)
+
     step = 0
     best_loss = np.inf
 
@@ -156,6 +216,7 @@ def train(sess, model, attr_matrix, train_idx, val_idx, topk_train, topk_val, la
             feed_train = model.feed_for_batch(attr_matrix,
                                               topk_train[i:i + batch_size],
                                               labels[train_idx[i:i + batch_size]],
+                                              normalized_adj_matrix[train_idx[i:i + batch_size]],
                                               key=i)
 
             _, train_loss, preds = sess.run([model.update_op, model.loss, model.preds],

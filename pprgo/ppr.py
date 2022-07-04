@@ -180,7 +180,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
 
         #First sort pageRank values
-        idx_topk_ppr = np.argsort(vals[i])[-topk:]
+        idx_topk_ppr = np.argsort(vals[i])
 
         j_ranked = js[i][idx_topk_ppr]
         val_ranked = vals[i][idx_topk_ppr]
@@ -209,7 +209,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         #----------------------------------------
 
 
-        new_exp = (gamma*val_ranked) + ((1-gamma)*shortest_paths)
+        new_exp = (gamma*val_ranked) + ((1-gamma)*core)
 
         idx_topk = np.argsort(new_exp)[-topk:]
 
