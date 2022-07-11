@@ -38,10 +38,10 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         # CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
 
-        sum_cr = 0
-        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+        sum_cr = get_sum(indices, indptr, unode, core_numbers)
+        # for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            sum_cr += core_numbers[vnode]
+        #     sum_cr += core_numbers[vnode]
 
 
         # sum_cr = add_elements(CR_neigbours)
@@ -79,9 +79,10 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
     return js, vals
 
 @numba.njit(cache=True)
-def add_elements(list):
-    array = np.array(list)
-    return np.sum(array)
+def get_sum(indices, indptr, unode, core_numbers):
+
+    CR_neigbours = np.array([core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
+    return np.sum(CR_neigbours)
 
 @numba.njit(cache=True)
 def three_hop_neighbourhood(node, indptr, indices):
@@ -211,84 +212,84 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
 
 
-    for i in numba.prange(len(nodes)):
+    # for i in numba.prange(len(nodes)):
 
-        # j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-        j, val = _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
-        j_np, val_np = np.array(j), np.array(val)
-
-
-        #Normalize pageRank values
-        val_np = val_np / np.sum(val_np)
-
-        #For statistics (min, max, mean) purposes
-        len_y.append(len(val))
+    #     # j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+    #     j, val = _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
+    #     j_np, val_np = np.array(j), np.array(val)
 
 
-        #BASELINE--------
-        idx_topk = np.argsort(val_np)[-topk:]
+    #     #Normalize pageRank values
+    #     val_np = val_np / np.sum(val_np)
 
-        # if i ==0:
-        #     print('nodes with page rank: ', j_np[idx_topk].tolist())
-        # all_kn += topk
-        js[i] = j_np
-        vals[i] = val_np
+    #     #For statistics (min, max, mean) purposes
+    #     len_y.append(len(val))
 
 
-        # js[i] = j_np[idx_topk]
-        # vals[i] = val_np[idx_topk]
+    #     #BASELINE--------
+    #     idx_topk = np.argsort(val_np)[-topk:]
 
-        continue
+    #     # if i ==0:
+    #     #     print('nodes with page rank: ', j_np[idx_topk].tolist())
+    #     # all_kn += topk
+    #     js[i] = j_np
+    #     vals[i] = val_np
+
+
+    #     # js[i] = j_np[idx_topk]
+    #     # vals[i] = val_np[idx_topk]
+
+    #     continue
         
 
 
-        #----------------
+    #     #----------------
 
-        #if len < 3 --> TAKE ALL
+    #     #if len < 3 --> TAKE ALL
 
-        if len(val) <= 3:
-            idx_topk = np.argsort(val_np)
-            all_kn += len(val)
-            js[i] = j_np[idx_topk]
-            vals[i] = val_np[idx_topk]
-            continue
+    #     if len(val) <= 3:
+    #         idx_topk = np.argsort(val_np)
+    #         all_kn += len(val)
+    #         js[i] = j_np[idx_topk]
+    #         vals[i] = val_np[idx_topk]
+    #         continue
 
-        #Ignore first entry (largest)
-        ignore = 1
-        x = np.arange(0, len(val) - ignore) 
-        idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
-        y = val_np[idx_y]
-        y = y[ignore:]    #ignore largest element (root node)
+    #     #Ignore first entry (largest)
+    #     ignore = 1
+    #     x = np.arange(0, len(val) - ignore) 
+    #     idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
+    #     y = val_np[idx_y]
+    #     y = y[ignore:]    #ignore largest element (root node)
 
-        #Else compute the knee point
-        kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S, interp_method='polynomial')
+    #     #Else compute the knee point
+    #     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S, interp_method='polynomial')
         
-        #If no knee point --> TAKE ALL
-        if kn.knee is None or kn.knee ==0:
-            idx_topk = np.argsort(val_np)
-            all_kn += len(val)
-            js[i] = j_np[idx_topk]
-            vals[i] = val_np[idx_topk]
-            if i < 5:
-                print('kn: ', len(val))
-            continue
+    #     #If no knee point --> TAKE ALL
+    #     if kn.knee is None or kn.knee ==0:
+    #         idx_topk = np.argsort(val_np)
+    #         all_kn += len(val)
+    #         js[i] = j_np[idx_topk]
+    #         vals[i] = val_np[idx_topk]
+    #         if i < 5:
+    #             print('kn: ', len(val))
+    #         continue
 
-        #If there is ACTUALLY a knee point
+    #     #If there is ACTUALLY a knee point
         
 
-        kn = kn.knee +1 # + 1 to recover ignored first element
+    #     kn = kn.knee +1 # + 1 to recover ignored first element
 
-        if i < 5:
-            print('kn: ', kn)
+    #     if i < 5:
+    #         print('kn: ', kn)
 
-        all_kn += kn
+    #     all_kn += kn
 
-        idx_topk = idx_y[0:kn]
+    #     idx_topk = idx_y[0:kn]
 
 
-        #----------------
-        js[i] = j_np[idx_topk]
-        vals[i] = val_np[idx_topk]
+    #     #----------------
+    #     js[i] = j_np[idx_topk]
+    #     vals[i] = val_np[idx_topk]
 
     js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
     vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
