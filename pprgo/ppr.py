@@ -180,7 +180,7 @@ def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon):
 
     
 
-@numba.njit(cache=True, parallel=True)
+# @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, graph, truss, S=None, gamma=0.1):
 
     
