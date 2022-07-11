@@ -38,14 +38,20 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         # CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
 
+        sum_cr = 0
+        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+
+            sum_cr += core_numbers[vnode]
+
+
         # sum_cr = add_elements(CR_neigbours)
         # print(sum_cr)
 
         for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            # percentage = core_numbers[vnode]/ sum_cr
+            percentage = core_numbers[vnode]/ sum_cr
 
-            _val = (1 - alpha) * res / deg[unode]
+            _val = (1 - alpha) * res * percentage
 
 
             if vnode in r:
