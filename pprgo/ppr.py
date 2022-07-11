@@ -180,7 +180,7 @@ def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon):
 
     
 
-# @numba.njit(cache=True, parallel=True)
+@numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, graph, truss, S=None, gamma=0.1):
 
     
@@ -192,7 +192,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     len_y = []
 
     CR = np.zeros((len(indptr) -1))
-    for i in range(len(indptr) -1):
+    for i in numba.prange(len(indptr) -1):
 
         #CRE method
         neighbours_cores =  [core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]]
