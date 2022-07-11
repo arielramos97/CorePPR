@@ -269,7 +269,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     
     
 
-    for i in range(len(nodes)):
+    for i in numba.prange(len(nodes)):
 
         #Analuyze ppr
 
