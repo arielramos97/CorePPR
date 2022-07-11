@@ -15,7 +15,7 @@ from networkx import from_scipy_sparse_matrix, k_truss
 
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'sum_cr':numba.float32, 'percentage':numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilon):
+def _calc_ppr_node(inode, core_numbers, indices, indptr,  deg, alpha, epsilon):
 
     # nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon
 
@@ -38,7 +38,7 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         # CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
 
-        sum_cr = CR[unode]
+        sum_cr = get_sum(indices, indptr, unode, core_numbers)
         # for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
         #     sum_cr += core_numbers[vnode]
@@ -191,22 +191,22 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     all_kn = 0
     len_y = []
 
-    CR = np.zeros((len(indptr) -1))
-    for i in numba.prange(len(indptr) -1):
+    # CR = np.zeros((len(indptr) -1))
+    # for i in numba.prange(len(indptr) -1):
 
-        #CRE method
-        neighbours_cores =  [core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]]
+    #     #CRE method
+    #     neighbours_cores =  [core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]]
 
-        CR[i] = sum(neighbours_cores)
+    #     CR[i] = sum(neighbours_cores)
     
-    #sort CR in decresing order
-    idx_decreasing_CR = np.argsort(CR)[::-1]
-    n_best = get_elbow_point(CR[idx_decreasing_CR])
+    # #sort CR in decresing order
+    # idx_decreasing_CR = np.argsort(CR)[::-1]
+    # n_best = get_elbow_point(CR[idx_decreasing_CR])
     # n_best = 4
 
     # print('CRE n_best: ', n_best)
     #set of key nodes
-    idx_key_nodes = idx_decreasing_CR[:n_best]
+    # idx_key_nodes = idx_decreasing_CR[:n_best]
     # print('idx_key_nodes: ', idx_key_nodes.shape)
     # print('indptr - 1 ', len(indptr) -1)
 
@@ -374,7 +374,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         
 
 
-        j, val =  _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
+        j, val =  _calc_ppr_node(nodes[i], core_numbers, indices, indptr, deg, alpha, epsilon)
 
          #For statistics (min, max, mean) purposes
         len_y.append(len(val))
