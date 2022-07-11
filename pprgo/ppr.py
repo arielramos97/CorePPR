@@ -114,17 +114,19 @@ def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon, idx_
 
         r[current_node] = f32_0
 
-        
-
         neighbours = np.array([vnode for vnode in indices[indptr[current_node]:indptr[current_node + 1]]])
 
         CR_neighbours = core_numbers[neighbours]
 
+        if i ==0:
+            print('CR_neighbours: ', CR_neighbours)
+
         # count_deg = len(np.where(CR_neighbours >= CR[current_node])[0])
         
-        for vnode in neighbours:
-
+        for vnode in indices[indptr[current_node]:indptr[current_node + 1]]:
             # if CR[vnode] >= CR[current_node]:
+
+            
 
             percentage = core_numbers[vnode] / np.sum(CR_neighbours)
             
