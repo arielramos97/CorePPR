@@ -45,7 +45,7 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
             # percentage = core_numbers[vnode]/ sum_cr
 
-            _val = (1 - alpha) * res /deg[unode]
+            _val = (1 - alpha) * res / deg[unode]
 
 
             if vnode in r:
