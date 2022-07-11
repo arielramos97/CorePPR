@@ -15,7 +15,10 @@ from networkx import from_scipy_sparse_matrix, k_truss
 
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
+def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilon):
+
+    # nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon
+    
     alpha_eps = alpha * epsilon
     f32_0 = numba.float32(0)
     p = {inode: f32_0}
@@ -83,7 +86,7 @@ def get_kn(x, y, S=1):
     return kn.knee 
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'percentage': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon, idx_key_nodes):
+def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon):
 
     alpha_eps = alpha * epsilon
 
@@ -187,7 +190,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
     for i in numba.prange(len(nodes)):
 
-        j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        # j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        j, val = _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
         j_np, val_np = np.array(j), np.array(val)
 
 
@@ -344,7 +348,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         
 
 
-        j, val =  get_nodes(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon, idx_key_nodes)
+        j, val =  _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
 
         j_np, val_np = np.array(j), np.array(val)
 
