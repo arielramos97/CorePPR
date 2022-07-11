@@ -9,8 +9,8 @@ x = np.array([[1,0,0,3],[2,0,7,0],[0,11,0,3],[15,0,0,0]])
 
 r, c = x.nonzero()
 
-print('r: ', r)
-print('c: ', c)
+# print('r: ', r)
+# print('c: ', c)
 
 
 batch_labels = np.random.randint(2, size=(4))
@@ -19,10 +19,10 @@ batch_idx = r
 batch_pprw = x[r,c]
 batch_attr = attr_matrix[c]
 
-print('batch idx shape: ', batch_idx.shape)
-print('batch_pprw: ', batch_pprw.shape)
-print('attr_matrix: ', attr_matrix.shape)
-print('batch_attr: ', batch_attr.shape)
+# print('batch idx shape: ', batch_idx.shape)
+# print('batch_pprw: ', batch_pprw.shape)
+# print('attr_matrix: ', attr_matrix.shape)
+# print('batch_attr: ', batch_attr.shape)
 
 hidden_size = 9
 nlayers =2
@@ -41,27 +41,33 @@ print('h @ w_2', h.shape)
 
 logits = h
 
-print('logits: ', logits.shape)
+print('logits: ', logits)
+
+
+print('batch_pprw[:, None]' ,batch_pprw[:, None])
 
 
 xd = logits * batch_pprw[:, None]
-print('xd: ', xd.shape)
+print('xd: ', xd)
 
 
-print('batch_idx[:, None]', batch_idx[:, None])
+# print('batch_idx[:, None]', batch_idx[:, None])
 
-weights = np.zeros((4, nc))
+# weights = np.zeros((4, nc))
 
-for i, a in enumerate(batch_idx):
-    weights[a] += xd[i]
+# for i, a in enumerate(batch_idx):
+#     weights[a] += xd[i]
 
-print(weights)
+# print(weights)
 # weighted_logits = tf.tensor_scatter_nd_add(tf.zeros((tf.shape(batch_labels)[0], 4)),
 #                                                    batch_idx[:, None],
 #                                                    logits * batch_pprw[:, None])
 
 
+y = np.zeros((512, 8710))
+z = np.zeros((512, 8710))
 
+print((y*z).shape)
 
 
 

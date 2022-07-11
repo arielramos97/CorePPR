@@ -114,6 +114,18 @@ class PPRGo:
         batch_attr = attr_matrix[neighbor_idx]
 
         batch_attr_adj = attr_matrix[neighbor_adj]
+
+        # print('source_idx: ', source_idx)
+        # print('adj_matrix: ', adj_matrix.shape)
+        # print('source_adj: ', source_adj.shape)
+        # print('neighbor_adj: ', neighbor_adj.shape)
+        # print('attr_matrix: ', attr_matrix.n_rows, attr_matrix.n_columns)
+
+        # print('batch_feats: ', attr_matrix[neighbor_idx].shape)
+        # print('batch_pprw: ', ppr_matrix[source_idx, neighbor_idx].A1.shape)
+        # print('batch_idx: ', source_idx.shape)
+        
+
         feed = {
             self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
             self.batch_feats_adj: sparse_feeder(batch_attr_adj) if self.sparse_features else batch_attr_adj,
