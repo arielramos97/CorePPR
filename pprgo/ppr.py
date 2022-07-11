@@ -38,7 +38,7 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         # CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
 
-        sum_cr = get_sum(indices, indptr, unode, core_numbers)
+        sum_cr = CR[unode]
         # for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
         #     sum_cr += core_numbers[vnode]
