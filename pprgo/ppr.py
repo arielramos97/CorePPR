@@ -369,10 +369,15 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         # if i ==0:
         #     print('returned_nodes: ', returned_nodes.shape, returned_nodes)
         #     print(CR[returned_nodes])
+
+        
         
 
 
         j, val =  _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
+
+         #For statistics (min, max, mean) purposes
+        len_y.append(len(val))
 
         j_np, val_np = np.array(j), np.array(val)
 
