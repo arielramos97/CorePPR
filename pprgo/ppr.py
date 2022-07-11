@@ -18,7 +18,7 @@ from networkx import from_scipy_sparse_matrix, k_truss
 def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilon):
 
     # nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon
-    
+
     alpha_eps = alpha * epsilon
     f32_0 = numba.float32(0)
     p = {inode: f32_0}
@@ -34,8 +34,17 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
         else:
             p[unode] = res
         r[unode] = f32_0
+
+        CR_neigbours = np.array([core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
+
         for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-            _val = (1 - alpha) * res / deg[unode]
+
+            percentage = core_numbers[vnode]/ np.sum(CR_neigbours)
+
+
+            _val = (1 - alpha) * res * percentage
+
+
             if vnode in r:
                 r[vnode] += _val
             else:
