@@ -82,7 +82,7 @@ def get_kn(x, y, S=1):
     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
     return kn.knee 
 
-@numba.njit(cache=True, locals={'_val': numba.float32, 'percantage': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
+@numba.njit(cache=True, locals={'_val': numba.float32, 'percentage': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon, idx_key_nodes):
 
     alpha_eps = alpha * epsilon
@@ -125,8 +125,6 @@ def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon, idx_
         
         for vnode in indices[indptr[current_node]:indptr[current_node + 1]]:
             # if CR[vnode] >= CR[current_node]:
-
-            
 
             percentage = core_numbers[vnode] / np.sum(CR_neighbours)
             
