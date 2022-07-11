@@ -14,7 +14,7 @@ from kneed import KneeLocator
 from networkx import from_scipy_sparse_matrix, k_truss
 
 
-@numba.njit(cache=True, locals={'_val': numba.float32, 'percentage':numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
+@numba.njit(cache=True, locals={'_val': numba.float32, 'sum_cr':numba.float32, 'percentage':numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilon):
 
     # nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon
@@ -37,12 +37,15 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
 
+        sum_cr = add_elements(CR_neigbours)
+        print(sum_cr)
+
         for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            percentage = core_numbers[vnode]/ add_elements(CR_neigbours)
+            # percentage = core_numbers[vnode]/ sum_cr
 
 
-            _val = (1 - alpha) * res * percentage
+            _val = (1 - alpha) * res /deg[unode]
 
 
             if vnode in r:
