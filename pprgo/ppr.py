@@ -39,7 +39,7 @@ def _calc_ppr_node(inode, CR, core_numbers, indices, indptr,  deg, alpha, epsilo
 
         for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            percentage = core_numbers[vnode]/ sum(CR_neigbours)
+            percentage = core_numbers[vnode]/ add_elements(CR_neigbours)
 
 
             _val = (1 - alpha) * res * percentage
@@ -68,6 +68,11 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
         js.append(j)
         vals.append(val)
     return js, vals
+
+@numba.njit(cache=True)
+def add_elements(list):
+    array = np.array(list)
+    return np.sum(array)
 
 @numba.njit(cache=True)
 def three_hop_neighbourhood(node, indptr, indices):
