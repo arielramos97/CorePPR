@@ -348,7 +348,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         j_core_np, val_core_np = np.array(j_core), np.array(val_core)
 
         #First check intersection
-        j_inter, x_ind, y_ind = np.intersect1d(j_ppr_np, j_core_np, return_indices=True)
+        xy, x_ind, y_ind = np.intersect1d(j_ppr_np, j_core_np, return_indices=True)
+        j_inter = j_ppr_np[x_ind]
         val_inter = val_ppr_np[x_ind] + val_core_np[y_ind]
 
         #Check difference
@@ -361,22 +362,27 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         # idx_diff2 = np.where(j_core_np == j_diff2)
         val_diff2 = val_core_np[x_ind]
 
-        if i ==0:
-            print('j_inter: ', j_inter)
-            print('val_inter: ', val_inter)
-            print('j_diff1: ', j_diff1)
-            print('val_diff1: ', val_diff1)
-            print('j_diff2: ', j_diff2)
-            print('val_diff2: ', val_diff2)
+        # if i ==0:
+        #     print('j_inter: ', j_inter)
+        #     print('val_inter: ', val_inter)
+        #     print('j_diff1: ', j_diff1)
+        #     print('val_diff1: ', val_diff1)
+        #     print('j_diff2: ', j_diff2)
+        #     print('val_diff2: ', val_diff2)
+
+        # norm_val_ppr_np = val_ppr_np[x_ind] / np.sum(val_ppr_np[x_ind])
+        # norm_val_core_np = val_core_np[y_ind] / np.sum(val_core_np[y_ind])
+
+        # new_idx = (gamma* norm_val_ppr_np) + ((1-gamma) * norm_val_core_np)
         
         j_final = np.concatenate((j_inter, j_diff1, j_diff2), axis=0).flatten()
         val_final = np.concatenate((val_inter, val_diff1, val_diff2), axis=0).flatten()
 
-        if i ==0:
-            print('j_final: ', j_final)
-            print('val_final: ', val_final)
+        # if i ==0:
+        #     print('j_final: ', j_final)
+        #     print('val_final: ', val_final)
 
-        #Normalize values
+        # Normalize values
         val_final = val_final/ np.sum(val_final)
         
         # val_np = val_np / np.sum(val_np)
@@ -395,10 +401,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
 
         idx_topk = np.argsort(val_final)[-elbow:]
 
-        if i == 0:
-            print('For node: ', i)
-            print('j_np: ', j_final[idx_topk].tolist())
-            print('val_np: ', val_final[idx_topk].tolist())
+        # if i == 0:
+        #     print('For node: ', i)
+        #     print('j_np: ', j_final[idx_topk].tolist())
+        #     print('val_np: ', val_final[idx_topk].tolist())
         #     print('idx_key_nodes: ', idx_key_nodes.tolist())
 
         all_kn += idx_topk.shape[0]
