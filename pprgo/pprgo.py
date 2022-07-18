@@ -228,6 +228,7 @@ def train(sess, model, attr_matrix, train_idx, val_idx, topk_train, topk_val, la
             feed_train = model.feed_for_batch(attr_matrix,
                                               topk_train[i:i + batch_size],
                                               labels[train_idx[i:i + batch_size]],
+                                              #Pass whole structure
                                               normalized_adj_matrix[train_idx[i:i + batch_size]],
                                               key=i)
 

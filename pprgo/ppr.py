@@ -14,10 +14,41 @@ from kneed import KneeLocator
 from networkx import from_scipy_sparse_matrix, k_truss
 
 
-@numba.njit(cache=True, locals={'_val': numba.float32, 'sum_cr':numba.float32, 'percentage':numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def _calc_ppr_node(inode, core_numbers, indices, indptr,  deg, alpha, epsilon):
+@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
+def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
+    alpha_eps = alpha * epsilon
+    f32_0 = numba.float32(0)
+    p = {inode: f32_0}
+    r = {}
+    r[inode] = alpha
+    q = [inode]
+    while len(q) > 0:
+        unode = q.pop()
 
-    # nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon
+        res = r[unode] if unode in r else f32_0
+        if unode in p:
+            p[unode] += res
+        else:
+            p[unode] = res
+        r[unode] = f32_0
+        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+            _val = (1 - alpha) * res / deg[unode]
+            if vnode in r:
+                r[vnode] += _val
+            else:
+                r[vnode] = _val
+
+            res_vnode = r[vnode] if vnode in r else f32_0
+            if res_vnode >= alpha_eps * deg[vnode]:
+                if vnode not in q:
+                    q.append(vnode)
+
+    return list(p.keys()), list(p.values())
+
+
+
+@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
+def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsilon):
 
     alpha_eps = alpha * epsilon
     f32_0 = numba.float32(0)
@@ -35,21 +66,16 @@ def _calc_ppr_node(inode, core_numbers, indices, indptr,  deg, alpha, epsilon):
             p[unode] = res
         r[unode] = f32_0
 
+        sum_cr = get_sum(indices, indptr, unode, CR)
+        # sum_cr = get_sum(indices, indptr, unode, core_numbers)
+        # print('sum_cr: ', sum_cr)
 
-        # CR_neigbours = [core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]]
-
-        sum_cr = get_sum(indices, indptr, unode, core_numbers)
-        # for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-
-        #     sum_cr += core_numbers[vnode]
-
-
-        # sum_cr = add_elements(CR_neigbours)
-        # print(sum_cr)
+        i = 0
 
         for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            percentage = core_numbers[vnode]/ sum_cr
+            percentage = CR[vnode] / sum_cr
+            # print('percentage: ', percentage)
 
             _val = (1 - alpha) * res * percentage
 
@@ -64,6 +90,8 @@ def _calc_ppr_node(inode, core_numbers, indices, indptr,  deg, alpha, epsilon):
             if res_vnode >= alpha_eps * deg[vnode]:
                 if vnode not in q:
                     q.append(vnode)
+        
+        i +=1
 
     return list(p.keys()), list(p.values())
 
@@ -79,9 +107,9 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
     return js, vals
 
 @numba.njit(cache=True)
-def get_sum(indices, indptr, unode, core_numbers):
+def get_sum(indices, indptr, unode, CR):
 
-    CR_neigbours = np.array([core_numbers[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
+    CR_neigbours = np.array([CR[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
     return np.sum(CR_neigbours)
 
 @numba.njit(cache=True)
@@ -108,76 +136,6 @@ def filter_mask(arr, threshold):
 def get_kn(x, y, S=1):
     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
     return kn.knee 
-
-@numba.njit(cache=True, locals={'_val': numba.float32, 'percentage': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def get_nodes(node, CR, core_numbers, indices, indptr, deg, alpha, epsilon):
-
-    alpha_eps = alpha * epsilon
-
-    # max_core = np.max(CR)
-    # alpha = core_numbers[node]/np.max(core_numbers)  
-    # print('max core: ', max_core)
-    # print('current CR: ', CR[node])
-
-    f32_0 = numba.float32(0)
-    p = {node: f32_0}
-    r = {}
-    r[node] = alpha
-
-    q = [node]
-
-    i =0
-
-    #Check with neigbours   
-    while len(q): 
-
-        current_node = q.pop()
-
-        res = r[current_node] if current_node in r else f32_0
-        if current_node in p:
-            p[current_node] += res
-        else:
-            p[current_node] = res
-
-        r[current_node] = f32_0
-
-        neighbours = np.array([vnode for vnode in indices[indptr[current_node]:indptr[current_node + 1]]])
-
-        CR_neighbours = core_numbers[neighbours]
-
-        if i ==0:
-            print('CR_neighbours: ', CR_neighbours)
-
-        # count_deg = len(np.where(CR_neighbours >= CR[current_node])[0])
-        
-        for vnode in indices[indptr[current_node]:indptr[current_node + 1]]:
-            # if CR[vnode] >= CR[current_node]:
-
-            percentage = core_numbers[vnode] / np.sum(CR_neighbours)
-            
-            # print('gets here even though count_deg is ',count_deg)
-            _val = (1 - alpha) * res * percentage
-
-            if vnode in r:
-                r[vnode] += _val
-            else:
-                r[vnode] = _val
-            
-            res_vnode = r[vnode] if vnode in r else f32_0
-
-            if res_vnode >= alpha_eps * deg[vnode]:
-                if vnode not in q:
-                    q.append(vnode)
-                
-        i +=1
-    
-    return list(p.keys()), list(p.values())
-
-
-
-    
-
-
     
 
 # @numba.njit(cache=True, parallel=True)
@@ -191,18 +149,23 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     all_kn = 0
     len_y = []
 
-    # CR = np.zeros((len(indptr) -1))
-    # for i in numba.prange(len(indptr) -1):
+    print('Computing CR...')
 
-    #     #CRE method
-    #     neighbours_cores =  [core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]]
+    CR = np.zeros((len(indptr) -1))
+    for i in range(len(indptr) -1):
 
-    #     CR[i] = sum(neighbours_cores)
+        #CRE method
+        neighbours_cores =  np.array([core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]])
+        
+        CR[i] = np.sum(neighbours_cores)
+
+    
+    print('Done computing CR...')
+    print('CR: ', CR[0:20])
     
     # #sort CR in decresing order
     # idx_decreasing_CR = np.argsort(CR)[::-1]
     # n_best = get_elbow_point(CR[idx_decreasing_CR])
-    # n_best = 4
 
     # print('CRE n_best: ', n_best)
     #set of key nodes
@@ -297,6 +260,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
     
     
 
+    print('Starting ppr calculation...')
     for i in numba.prange(len(nodes)):
 
         #Analuyze ppr
@@ -373,42 +337,74 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, co
         
         
 
+        j_ppr, val_ppr = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        j_ppr_np, val_ppr_np = np.array(j_ppr), np.array(val_ppr)
 
-        j, val =  _calc_ppr_node(nodes[i], core_numbers, indices, indptr, deg, alpha, epsilon)
+        j_core, val_core =  _calc_core_node(nodes[i], core_numbers, CR,  indices, indptr, deg, alpha, epsilon)
 
          #For statistics (min, max, mean) purposes
-        len_y.append(len(val))
+        len_y.append(len(val_core))
 
-        j_np, val_np = np.array(j), np.array(val)
+        j_core_np, val_core_np = np.array(j_core), np.array(val_core)
 
+        #First check intersection
+        j_inter, x_ind, y_ind = np.intersect1d(j_ppr_np, j_core_np, return_indices=True)
+        val_inter = val_ppr_np[x_ind] + val_core_np[y_ind]
+
+        #Check difference
+        j_diff1 = np.setdiff1d(j_ppr_np, j_core_np)
+        xy, x_ind, y_ind = np.intersect1d(j_ppr_np, j_diff1, return_indices=True)
+        val_diff1 = val_ppr_np[x_ind]
+
+        j_diff2 = np.setdiff1d(j_core_np, j_ppr_np)
+        xy, x_ind, y_ind = np.intersect1d(j_core_np, j_diff2, return_indices=True)
+        # idx_diff2 = np.where(j_core_np == j_diff2)
+        val_diff2 = val_core_np[x_ind]
+
+        if i ==0:
+            print('j_inter: ', j_inter)
+            print('val_inter: ', val_inter)
+            print('j_diff1: ', j_diff1)
+            print('val_diff1: ', val_diff1)
+            print('j_diff2: ', j_diff2)
+            print('val_diff2: ', val_diff2)
         
-        val_np = val_np / np.sum(val_np)
+        j_final = np.concatenate((j_inter, j_diff1, j_diff2), axis=0).flatten()
+        val_final = np.concatenate((val_inter, val_diff1, val_diff2), axis=0).flatten()
 
-        cores = core_numbers[j_np]
-        cores = cores / np.sum(cores)
+        if i ==0:
+            print('j_final: ', j_final)
+            print('val_final: ', val_final)
 
-        new_idx = (gamma* val_np) + ((1-gamma) * cores)
-
+        #Normalize values
+        val_final = val_final/ np.sum(val_final)
         
+        # val_np = val_np / np.sum(val_np)
 
-        idx_topk = np.argsort(new_idx)[::-1]
+        # cores = core_numbers[j_np]
+        # cores = cores / np.sum(cores)
+
+        # new_idx = (gamma* val_np) + ((1-gamma) * cores)
+
+
+        idx_topk = np.argsort(val_final)[::-1]
 
         #Get elbow point
-        elbow = get_elbow_point(new_idx[idx_topk[1:]]) + 1
+        elbow = get_elbow_point(val_final[idx_topk[1:]]) + 1
 
 
-        idx_topk = np.argsort(new_idx)[-elbow:]
+        idx_topk = np.argsort(val_final)[-elbow:]
 
-        # if i == 0:
-        #     print('For node: ', i)
-        #     print('j_np: ', j_np[idx_topk].tolist())
-        #     print('val_np: ', val_np[idx_topk].tolist())
+        if i == 0:
+            print('For node: ', i)
+            print('j_np: ', j_final[idx_topk].tolist())
+            print('val_np: ', val_final[idx_topk].tolist())
         #     print('idx_key_nodes: ', idx_key_nodes.tolist())
 
         all_kn += idx_topk.shape[0]
 
-        js_weighted[i] = j_np[idx_topk]
-        vals_weighted[i] = new_idx[idx_topk]
+        js_weighted[i] = j_final[idx_topk]
+        vals_weighted[i] = val_final[idx_topk]
 
         continue
 
