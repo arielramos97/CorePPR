@@ -176,9 +176,9 @@ def train(sess, model, attr_matrix, train_idx, val_idx, topk_train, topk_val, co
             gamma, core_ppr, _, train_loss, preds = sess.run([model.gamma, model.core_ppr, model.update_op, model.loss, model.preds],
                                              feed_train)
 
-            if epoch % 20 == 0:
+            # if epoch % 20 == 0:
                 # print('core_ppr: ', core_ppr.shape, core_ppr)
-                print('gamma: ', gamma)
+                # print('gamma: ', gamma)
 
             step += 1
             if step % eval_step == 0:

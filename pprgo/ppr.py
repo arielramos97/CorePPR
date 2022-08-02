@@ -489,15 +489,15 @@ def coreRank(indptr, indices, cores):
 
     CR = np.zeros((len(indptr)-1), dtype=np.float32)
 
-    maximum = 0
+    # maximum = 0
     for i in numba.prange(len(indptr) -1):
 
-        if maximum < np.sum(cores[indices[indptr[i]:indptr[i + 1]]]):
-            maximum = np.sum(cores[indices[indptr[i]:indptr[i + 1]]])
+        # if maximum < np.sum(cores[indices[indptr[i]:indptr[i + 1]]]):
+        #     maximum = np.sum(cores[indices[indptr[i]:indptr[i + 1]]])
 
         CR[i] = np.sum(cores[indices[indptr[i]:indptr[i + 1]]], dtype=np.float32)
     
-    print('maxium: ', maximum)
+    # print('maxium: ', maximum)
     return CR
 
 
