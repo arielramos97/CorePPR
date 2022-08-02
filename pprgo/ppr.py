@@ -1,18 +1,21 @@
 from distutils import core
-from math import gamma
 import numba
 import numpy as np
 import scipy.sparse as sp
 import igraph
+import math
 from sklearn import neighbors
+from zmq import has
 from elbow_point import get_elbow_point
 
 
 from scipy.signal import savgol_filter
 from kneed import KneeLocator
 
-from networkx import from_scipy_sparse_matrix, k_truss
+import tqdm
 
+
+from networkx import from_scipy_sparse_matrix, k_truss, shortest_path
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
@@ -45,10 +48,42 @@ def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
 
     return list(p.keys()), list(p.values())
 
+@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
+def _calc_ppr_node2(inode, indptr, indices, deg, alpha, epsilon):
+    alpha_eps = alpha * epsilon
+    f32_0 = numba.float32(0)
+
+    r = np.zeros((len(indptr)-1), dtype=np.float32)
+    p = np.zeros((len(indptr)-1), dtype=np.float32)
+
+    p[inode] =f32_0
+    r[inode] = alpha
+    q = [inode]
+
+    while len(q) > 0:
+        unode = q.pop()
+
+        res = r[unode] 
+        p[unode] += res
+        r[unode] = f32_0
+        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+            _val = (1 - alpha) * res / deg[unode]
+            r[vnode] += _val
+            
+            res_vnode = r[vnode] 
+            if res_vnode >= alpha_eps * deg[vnode]:
+                if vnode not in q:
+                    q.append(vnode)
+    
+    j = np.nonzero(p)[0]
+    val = p[j]
+
+    return j, val
+
 
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsilon):
+def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsilon, key_nodes):
 
     alpha_eps = alpha * epsilon
     f32_0 = numba.float32(0)
@@ -56,6 +91,8 @@ def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsil
     r = {}
     r[inode] = alpha
     q = [inode]
+
+
     while len(q) > 0:
         unode = q.pop()
 
@@ -66,35 +103,365 @@ def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsil
             p[unode] = res
         r[unode] = f32_0
 
-        sum_cr = get_sum(indices, indptr, unode, CR)
-        # sum_cr = get_sum(indices, indptr, unode, core_numbers)
-        # print('sum_cr: ', sum_cr)
-
+        has_key_nodes, sum_cr = get_sum(indices, indptr, unode, CR, key_nodes)
+    
         i = 0
 
-        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+        #If no key nodes in neighbours, apply weighted sum
+        if has_key_nodes:
 
-            percentage = CR[vnode] / sum_cr
-            # print('percentage: ', percentage)
+            for vnode in indices[indptr[unode]:indptr[unode + 1]]:
 
-            _val = (1 - alpha) * res * percentage
+                if vnode in key_nodes:
 
+                    percentage = CR[vnode] / sum_cr
+                    # print('percentage: ', percentage)
 
-            if vnode in r:
-                r[vnode] += _val
-            else:
-                r[vnode] = _val
+                    _val = (1 - alpha) * res * percentage
 
-            res_vnode = r[vnode] if vnode in r else f32_0
+                    if vnode in r:
+                        r[vnode] += _val
+                    else:
+                        r[vnode] = _val
 
-            if res_vnode >= alpha_eps * deg[vnode]:
-                if vnode not in q:
-                    q.append(vnode)
+                    res_vnode = r[vnode] if vnode in r else f32_0
+
+                    if res_vnode >= alpha_eps * deg[vnode]:
+                        if vnode not in q:
+                            q.append(vnode)
+        else:
+            
+            for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+
+                percentage = CR[vnode] / sum_cr
+                # print('percentage: ', percentage)
+
+                _val = (1 - alpha) * res / deg[unode]
+
+                if vnode in r:
+                    r[vnode] += _val
+                else:
+                    r[vnode] = _val
+
+                res_vnode = r[vnode] if vnode in r else f32_0
+
+                if res_vnode >= alpha_eps * deg[vnode]:
+                    if vnode not in q:
+                        q.append(vnode)
         
         i +=1
 
     return list(p.keys()), list(p.values())
 
+
+@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32, 'rmax':numba.float32, 'rsum': numba.float32, 'rmax_prime':numba.float32, 'n_random_walks':numba.int32, 'v_stopping':numba.int32})
+def powerPush2(inode, indptr, indices, deg, alpha, lambda_, nodes, m, W, epoch_num, scanThreshold):
+
+
+    # lambda_ = 0.3
+    rmax = lambda_/m
+
+    f32_0 = numba.float32(0)
+    f32_1 = numba.float32(1)
+
+    r = np.zeros((len(nodes)))
+    p = np.zeros((len(nodes)))
+
+    # r = [f32_0] * (len(indptr) -1)
+    # p = [f32_0] * (len(indptr) -1)
+
+    p[inode] = f32_0
+    r[inode] = f32_1
+    q = [inode]
+
+    rsum = f32_1
+
+    while (len(q) > 0) and (len(q) <= scanThreshold) and rsum > lambda_:
+       
+        unode = q.pop()
+
+        res = r[unode]
+        p[unode] += alpha* res
+        
+
+        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+            _val = (1 - alpha) * res / deg[unode]
+            r[vnode] += _val
+            rsum += _val
+            
+            res_vnode = r[vnode] 
+            if res_vnode >= rmax * deg[vnode]:
+                if vnode not in q:
+                    q.append(vnode)
+        
+        r[unode] = f32_0
+        rsum -= res
+        
+    if rsum >lambda_:
+
+        for i in numba.prange(1, epoch_num+1):
+
+            rmax_prime = lambda_**(i/epoch_num) / m
+
+            while np.sum(r) > m * rmax_prime:
+
+                for unode in nodes:
+                    res = r[unode]
+                    if res >= rmax_prime * deg[unode]:
+                        
+                        p[unode] += alpha * r[unode]
+
+                        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+                            _val = (1-alpha)* res / deg[unode]
+                            
+                            r[vnode] += _val
+                            rsum += _val
+
+                        r[unode] = f32_0
+                        rsum -= res
+                        
+    # Refine  
+    # rmax = 1/W  
+
+    # while True:
+
+    #     changed = False
+    #     for unode in nodes:
+    #         res = r[unode]
+    #         if res >= rmax * deg[unode]:
+    #             changed = True
+    #             p[unode] += alpha * res
+            
+    #             for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+    #                 _val = (1-alpha)* res / deg[unode]
+                    
+    #                 r[vnode] += _val
+                
+    #             r[unode] = f32_0
+    #         else:
+    #             break
+        
+    #     if changed == False:
+    #         break
+
+    v_gtz = np.where(r >f32_0)
+
+    
+    # for unode in nodes[v_gtz]:
+    #     res = r[unode] 
+
+    #     n_random_walks = math.ceil(res * W)
+        
+    #     for i in numba.prange(n_random_walks):
+    #         v_stopping = random_walk(unode, indptr, indices, deg, alpha)
+
+    #         p[v_stopping] += res / n_random_walks
+               
+                
+    return p
+
+
+
+
+@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32, 'rsum': numba.float32, 'rmax_prime':numba.float32, 'n_random_walks':numba.float32})
+def powerPush(inode, indptr, indices, deg, alpha, lambda_, nodes, m, W):
+
+    # print('Inside power psuh')
+
+    epoch_num = 8
+    scanThreshold = len(nodes)/4
+
+
+    rmax = lambda_/m
+    
+    f32_0 = numba.float32(0)
+    f32_1 = numba.float32(1)
+    p = {inode: f32_0}
+    r = {}
+    r[inode] = f32_1
+    q = [inode]
+
+    rsum = f32_1
+
+    j = 0
+
+
+
+    while (len(q) > 0) and (len(q) <= scanThreshold) and rsum > lambda_:
+       
+        unode = q.pop()
+
+        res = r[unode] if unode in r else f32_0
+        if unode in p:
+            p[unode] += alpha* res
+        else:
+            p[unode] = alpha* res
+        
+        
+
+        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+            _val = (1 - alpha) * res / deg[unode]
+            if vnode in r:
+                r[vnode] += _val
+            else:
+                r[vnode] = _val
+            
+            rsum += _val
+            
+
+            res_vnode = r[vnode] if vnode in r else f32_0
+            if res_vnode >= rmax * deg[vnode]:
+                if vnode not in q:
+                    q.append(vnode)
+        
+        r[unode] = f32_0
+        rsum -= res
+        
+    if rsum >lambda_:
+
+        for i in numba.prange(1, epoch_num+1):
+
+            rmax_prime = lambda_**(i/epoch_num) / m
+
+            while rsum > m * rmax_prime:
+
+                for unode in nodes:
+                    res = r[unode] if unode in r else f32_0
+                    if res >= rmax_prime * deg[unode]:
+                        if unode in p:
+                            p[unode] += alpha * r[unode]
+                        else:
+                            p[unode] = alpha * r[unode]
+                                                
+
+                        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+                            _val = (1-alpha)* res / deg[unode]
+                            if vnode in r:
+                                r[vnode] += _val
+                            else:
+                                r[vnode] = _val
+                            rsum += _val
+
+                        r[unode] = f32_0
+                        rsum -= res
+                        
+    # Refine  
+    rmax = 1/W  
+    for unode in nodes:
+
+        while(True):
+            res = r[unode] if unode in r else f32_0
+            if res >= rmax * deg[unode]:
+                if unode in p:
+                    p[unode] += alpha * res
+                else:
+                    p[unode] = alpha * res
+
+                for vnode in indices[indptr[unode]:indptr[unode + 1]]:
+                    _val = (1-alpha)* res / deg[unode]
+                    if vnode in r:
+                        r[vnode] += _val
+                    else:
+                        r[vnode] = _val
+                r[unode] = f32_0
+            else:
+                break
+            
+
+    for unode in nodes:
+        res = r[unode] if unode in r else f32_0
+
+        if res > f32_0:
+            #Perform random walks
+            n_random_walks = math.ceil(res * W)
+            
+            for i in numba.prange(n_random_walks):
+                v_stopping = random_walk(unode, indptr, indices, deg, alpha)
+
+                if v_stopping in p:
+                    p[v_stopping] += res / n_random_walks
+                else:
+                    p[v_stopping] = res / n_random_walks
+                
+
+
+    return list(p.keys()), list(p.values())
+
+@numba.njit(cache=True)
+def k_core(indptr, indices, deg):
+
+
+    nodes = np.argsort(deg)
+
+    bin_boundaries = [0]
+    curr_degree = 0
+
+    # for i, v in enumerate(nodes):
+    #     if deg[v] > curr_degree:
+    #         bin_boundaries.extend([i] * (deg[v] - curr_degree))
+    #         curr_degree = deg[v]
+    
+    for i in numba.prange(len(nodes)):
+        if deg[nodes[i]] > curr_degree:
+            bin_boundaries.extend([i] * (deg[nodes[i]] - curr_degree))
+            curr_degree = deg[nodes[i]]
+
+
+
+
+    node_pos = np.zeros((len(indptr)-1), dtype=np.int64)
+
+    for i in numba.prange(len(nodes)):
+        node_pos[nodes[i]] = i 
+
+    core = deg.copy()
+
+    nbrs = []
+    for i in numba.prange(len(indptr)-1):
+        nbrs.append(list(indices[indptr[i]:indptr[i + 1]]))
+    # nbrs = {v: list(indices[indptr[v]:indptr[v + 1]]) for v in nodes}
+
+    # printing = int(len(nodes) / 10)
+
+    for i in numba.prange(len(nodes)):
+        # if i % printing ==0:
+        #     print(i, ' nodes processed')
+
+        for j in numba.prange(len(nbrs[nodes[i]])):
+            
+            if core[nbrs[nodes[i]][j]] > core[nodes[i]]:
+                nbrs[nbrs[nodes[i]][j]].remove(nodes[i])
+                pos = node_pos[nbrs[nodes[i]][j]]
+                bin_start = bin_boundaries[core[nbrs[nodes[i]][j]]]
+                node_pos[nbrs[nodes[i]][j]] = bin_start
+                node_pos[nodes[bin_start]] = pos
+                nodes[bin_start], nodes[pos] = nodes[pos], nodes[bin_start]
+                bin_boundaries[core[nbrs[nodes[i]][j]]] += 1
+                core[nbrs[nodes[i]][j]] -= 1
+    return core
+
+
+@numba.njit(cache=True)
+def get_rsum(r_copy):
+
+    return np.sum(r_copy)
+
+
+
+@numba.njit(cache=True)
+def random_walk(inode, indptr, indices, deg, alpha):
+
+
+    v = inode
+
+    while(True):
+        if np.random.uniform(0,1) < alpha:
+            return v
+
+        if deg[v] > 0:
+            v = np.random.choice(indices[indptr[v]:indptr[v + 1]])             
+        else:
+            v = inode    
 
 @numba.njit(cache=True)
 def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
@@ -107,382 +474,263 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
     return js, vals
 
 @numba.njit(cache=True)
-def get_sum(indices, indptr, unode, CR):
+def get_sum(indices, indptr, unode, CR, key_nodes):
 
+    CR_neigbours = np.array([CR[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]] if vnode in key_nodes])
+
+    if CR_neigbours.size != 0:
+        return True, np.sum(CR_neigbours)
+    
     CR_neigbours = np.array([CR[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
-    return np.sum(CR_neigbours)
+    return False, np.sum(CR_neigbours)
 
 @numba.njit(cache=True)
-def three_hop_neighbourhood(node, indptr, indices):
+def coreRank(indptr, indices, cores):
 
-    hop = set()
+    CR = np.zeros((len(indptr)-1), dtype=np.float32)
 
-    for v_node_1 in indices[indptr[node]:indptr[node + 1]]:
-        hop.add(v_node_1)
-        for v_node_2 in indices[indptr[v_node_1]:indptr[v_node_1 + 1]]:
-            hop.add(v_node_2)
-            for v_node_3 in indices[indptr[v_node_2]:indptr[v_node_2 + 1]]:
-                hop.add(v_node_3)
+    maximum = 0
+    for i in numba.prange(len(indptr) -1):
 
-    hop_np = np.array(list(hop))
-    hop_np = hop_np.astype(np.int64)
-    return hop_np
+        if maximum < np.sum(cores[indices[indptr[i]:indptr[i + 1]]]):
+            maximum = np.sum(cores[indices[indptr[i]:indptr[i + 1]]])
 
-@numba.njit(cache=True)
-def filter_mask(arr, threshold):
-    return arr[arr > threshold]
+        CR[i] = np.sum(cores[indices[indptr[i]:indptr[i + 1]]], dtype=np.float32)
+    
+    print('maxium: ', maximum)
+    return CR
 
-# @numba.njit(cache=True)
-def get_kn(x, y, S=1):
-    kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S) 
-    return kn.knee 
+
+@numba.njit(cache=True, parallel=True)
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR):
+
     
 
-# @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, core_numbers, graph, truss, S=None, gamma=0.1):
+
+    # print('CR: ', np.max(CR))
+    # js = [np.zeros(0, dtype=np.int64)] * len(nodes)
+    # vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
+
+
+    # all_kn = numba.float32(0)
+    # len_y = []
+
+    #Check algorithm k-core
+    # print('Computing core numbers...')
+
+    # core_numbers = k_core(indptr, indices, deg)
+
+    # for i in range(5):
+    #     print('core for node: ', i, core_numbers2[i])
+    #     print('core original for node: ', i, core_numbers[i])
+
+    # core_numbers = core_numbers2
+
+
+    # np.save('magC-cores', core_numbers)
 
     
-    js = [np.zeros(0, dtype=np.int64)] * len(nodes)
-    vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
 
-
-    all_kn = 0
-    len_y = []
-
-    print('Computing CR...')
-
-    CR = np.zeros((len(indptr) -1))
-    for i in range(len(indptr) -1):
-
-        #CRE method
-        neighbours_cores =  np.array([core_numbers[n_v] for n_v in indices[indptr[i]:indptr[i + 1]]])
-        
-        CR[i] = np.sum(neighbours_cores)
-
+    # print('Computing CR...')
+    # CR = coreRank(indices, indptr, core_numbers)
     
-    print('Done computing CR...')
-    print('CR: ', CR[0:20])
+
+    # print('Done computing CR...')
+    # print('CR: ', CR[0:20])
+
+    # CR = CR/np.sum(CR)
     
     # #sort CR in decresing order
     # idx_decreasing_CR = np.argsort(CR)[::-1]
     # n_best = get_elbow_point(CR[idx_decreasing_CR])
 
     # print('CRE n_best: ', n_best)
-    #set of key nodes
-    # idx_key_nodes = idx_decreasing_CR[:n_best]
+    # #set of key nodes
+    # key_nodes = idx_decreasing_CR[:n_best]
     # print('idx_key_nodes: ', idx_key_nodes.shape)
     # print('indptr - 1 ', len(indptr) -1)
 
 
 
-    # for i in numba.prange(len(nodes)):
+    js_weighted = [np.zeros(0, dtype=np.int64)] * (len(nodes))
+    vals_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
 
-    #     # j, val = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-    #     j, val = _calc_ppr_node(nodes[i], CR, core_numbers, indices, indptr, deg, alpha, epsilon)
-    #     j_np, val_np = np.array(j), np.array(val)
+    vals_core_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
 
+    # epsilon = 0.7
+    # # u = 1 / len(nodes)
+    # u = 1/ (len(indptr) -1)
+    # print('u: ', u)
+    # W = (2*(2+ (2.0/3.0) * epsilon)* np.log((len(indptr) -1)))/(epsilon**2 * u)
+    # # W = (2*(2+ (2.0/3.0) * epsilon)* np.log(len(nodes)))/(epsilon**2 * u)
+    # print('W: ', W)
 
-    #     #Normalize pageRank values
-    #     val_np = val_np / np.sum(val_np)
+    # lambda_ = m/W
+    # # lambda_ = min(10**-8, 1/m)
+    # # lambda_ = 0.01
 
-    #     #For statistics (min, max, mean) purposes
-    #     len_y.append(len(val))
+    # print('lambda: ', lambda_)
 
+    # rmax = lambda_/m
+    # print('rmax: ', rmax)
 
-    #     #BASELINE--------
-    #     idx_topk = np.argsort(val_np)[-topk:]
+    # print('1/W: ', 1/W)
 
-    #     # if i ==0:
-    #     #     print('nodes with page rank: ', j_np[idx_topk].tolist())
-    #     # all_kn += topk
-    #     js[i] = j_np
-    #     vals[i] = val_np
+    # all_nodes = np.arange((len(indptr)-1))
 
+    # epoch_num = 8
+    # scanThreshold = (len(indptr)-1)/4
+    # epsilon = 1e-4
 
-    #     # js[i] = j_np[idx_topk]
-    #     # vals[i] = val_np[idx_topk]
+   
 
-    #     continue
-        
-
-
-    #     #----------------
-
-    #     #if len < 3 --> TAKE ALL
-
-    #     if len(val) <= 3:
-    #         idx_topk = np.argsort(val_np)
-    #         all_kn += len(val)
-    #         js[i] = j_np[idx_topk]
-    #         vals[i] = val_np[idx_topk]
-    #         continue
-
-    #     #Ignore first entry (largest)
-    #     ignore = 1
-    #     x = np.arange(0, len(val) - ignore) 
-    #     idx_y = np.argsort(val_np)[::-1]  #Sort in descending order
-    #     y = val_np[idx_y]
-    #     y = y[ignore:]    #ignore largest element (root node)
-
-    #     #Else compute the knee point
-    #     kn = KneeLocator(x, y, curve='convex', direction='decreasing', S=S, interp_method='polynomial')
-        
-    #     #If no knee point --> TAKE ALL
-    #     if kn.knee is None or kn.knee ==0:
-    #         idx_topk = np.argsort(val_np)
-    #         all_kn += len(val)
-    #         js[i] = j_np[idx_topk]
-    #         vals[i] = val_np[idx_topk]
-    #         if i < 5:
-    #             print('kn: ', len(val))
-    #         continue
-
-    #     #If there is ACTUALLY a knee point
-        
-
-    #     kn = kn.knee +1 # + 1 to recover ignored first element
-
-    #     if i < 5:
-    #         print('kn: ', kn)
-
-    #     all_kn += kn
-
-    #     idx_topk = idx_y[0:kn]
-
-
-    #     #----------------
-    #     js[i] = j_np[idx_topk]
-    #     vals[i] = val_np[idx_topk]
-
-    js_weighted = [np.zeros(0, dtype=np.int64)] * len(nodes)
-    vals_weighted = [np.zeros(0, dtype=np.float32)] * len(nodes)
-
-    
-    
-
-    print('Starting ppr calculation...')
+    # print('Starting ppr calculation...')
     for i in numba.prange(len(nodes)):
 
-        #Analuyze ppr
+        # if i % 100 ==0:
+        #     print(i)
 
-        # CR_ppr = CR[js[i]]
-        # core_numbers = core_numbers[js[i]]
-        # shortest_paths = graph.get_shortest_paths(nodes[i], to=js[i])
-        # shortest_paths = np.array([len(s_path) for s_path in shortest_paths])
+        
+        # j_ppr, val_ppr = powerPush(nodes[i], indptr, indices, deg, alpha, lambda_, all_nodes, m, W)
+        # p = powerPush2(nodes[i], indptr, indices, deg, alpha, lambda_, all_nodes, m, W, epoch_num, scanThreshold)
 
+        
+        j_ppr_np, val_ppr_np = _calc_ppr_node2(nodes[i], indptr, indices, deg, alpha, epsilon)
+
+
+        #For statistics (min, max, mean) purposes
+        # len_y.append(len(val_ppr_np))
+
+        
 
         # if i ==0:
-        #     print('ppr: ', vals[i].tolist())
-        #     print('CR_ppr:', CR_ppr.tolist())
-        #     print('core_numbers: ', core_numbers.tolist())
-        #     print('shortest_paths: ', shortest_paths.tolist())
+        #     print('len: ', len(j_ppr_np))
+        #     print('sum: ', np.sum(val_ppr_np))
+        #     print('j: ', j_ppr_np)
+        #     print('val: ', val_ppr_np)
 
 
-        # #K-cores of shortest paths
-        # cores = CR[idx_key_nodes[idx_sort_shortest_paths]]
+        # j_ppr_np, val_ppr_np = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
+        # j_ppr_np, val_ppr_np = np.array(j_ppr_np), np.array(val_ppr_np)
+        
 
-        # #Normalize core values
-        # cores = cores/np.sum(cores)
 
-        # closest_nodes = idx_key_nodes[idx_sort_shortest_paths]
+        #Take only inital 32
+        idx_topk = np.argsort(val_ppr_np)[-topk:]
 
-        # #Normalize short paths
-        # norm_shortest_paths = np.sum(shortest_paths) - shortest_paths[idx_sort_shortest_paths]
-        # norm_shortest_paths = norm_shortest_paths/np.sum(norm_shortest_paths)
+        # val_ppr_np_topk = val_ppr_np[idx_topk] /np.sum(val_ppr_np[idx_topk])
+
+
+        # cores = 
         # if i ==0:
-        #     print('norm_shortest_paths: ', norm_shortest_paths)
-
-
-
-        # new_exp = (gamma*cores) + ((1-gamma)*norm_shortest_paths)
-
-        # #Find elbow point
-        # idx_topk = np.argsort(new_exp)[-topk:]
+        #     print('cores: ', cores)
+        # if i ==0:
+        #     print('cores: ', cores)
 
         # if i ==0:
-        #     print('this cr: ', np.sort(cores)[::-1].tolist())
+        #     print('type cores: ', cores.dtype)
 
-        # elbow = get_elbow_point(new_exp[idx_topk[1:]]) + 1
+        # val_ppr_np_topk = val_ppr_np_topk * cores
 
-
-        # all_kn += topk
-
-        # new_exp = new_exp[idx_topk]/np.sum(new_exp[idx_topk])
-
-
-        # js_weighted[i] = idx_key_nodes[idx_sort_shortest_paths][idx_topk]
-        # vals_weighted[i] = weighted_cores[idx_topk]/np.sum(weighted_cores[idx_topk])
-
-        # continue
+        # new_idx = (gamma* val_ppr_np_topk) + ((1-gamma) * cores)
+ 
 
         
-        # CR_decreasing = CR[idx_decreasing_CR]
 
-        # current_core_idx = np.where(idx_decreasing_CR == nodes[i])[0][0]
+        # shortest_paths = np.array([np.array(shortest_path(graph, nodes[i], k)) for k in key_nodes])
+        # length_paths = np.array([path.size for path in shortest_paths])
+        # print('length_paths: ', length_paths)
 
-        # interval = 20
+        # #Take the first top k
+        # idx_shortest_nodes = np.argsort(length_paths)[:topk]
+        # closest_paths = shortest_paths[idx_shortest_nodes]
+        # closest_nodes = key_nodes[idx_shortest_nodes]
+        # closest_lenghts = length_paths[idx_shortest_nodes]
 
-        # # if i ==0:
-        # #     print(current_core_idx)
-
-        # if current_core_idx < interval:
-        #     returned_nodes = idx_decreasing_CR[:current_core_idx +interval + 1 ]
-        # else:
-        #     returned_nodes = idx_decreasing_CR[current_core_idx - interval:current_core_idx +interval + 1 ]
-        
-        # if i ==0:
-        #     print('returned_nodes: ', returned_nodes.shape, returned_nodes)
-        #     print(CR[returned_nodes])
+        # print('closest_paths: ', closest_paths.shape)
+        # print('closest_nodes: ', closest_nodes.shape, closest_nodes)
 
         
+
+        # print(shortest_paths.shape)
+
+        # j_core, val_core =  _calc_core_node(nodes[i], core_numbers, CR,  indices, indptr, deg, alpha, epsilon, key_nodes)
+    
         
 
-        j_ppr, val_ppr = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-        j_ppr_np, val_ppr_np = np.array(j_ppr), np.array(val_ppr)
+        # j_core_np, val_core_np = np.array(j_core), np.array(val_core)
 
-        j_core, val_core =  _calc_core_node(nodes[i], core_numbers, CR,  indices, indptr, deg, alpha, epsilon)
+        # val_ppr_np = val_ppr_np/ np.sum(val_ppr_np)
 
-         #For statistics (min, max, mean) purposes
-        len_y.append(len(val_core))
+        # val_ppr_np2 = val_ppr_np2/ np.sum(val_ppr_np2)
 
-        j_core_np, val_core_np = np.array(j_core), np.array(val_core)
+        # idx_topk = np.argsort(new_idx)[::-1]  #decreasing order
 
-        #First check intersection
-        xy, x_ind, y_ind = np.intersect1d(j_ppr_np, j_core_np, return_indices=True)
-        j_inter = j_ppr_np[x_ind]
-        val_inter = val_ppr_np[x_ind] + val_core_np[y_ind]
+        # # #Get elbow point
+        # elbow = get_elbow_point(new_idx[idx_topk[1:]]) + 1
 
-        #Check difference
-        j_diff1 = np.setdiff1d(j_ppr_np, j_core_np)
-        xy, x_ind, y_ind = np.intersect1d(j_ppr_np, j_diff1, return_indices=True)
-        val_diff1 = val_ppr_np[x_ind]
 
-        j_diff2 = np.setdiff1d(j_core_np, j_ppr_np)
-        xy, x_ind, y_ind = np.intersect1d(j_core_np, j_diff2, return_indices=True)
-        # idx_diff2 = np.where(j_core_np == j_diff2)
-        val_diff2 = val_core_np[x_ind]
+        # idx_topk32 = np.argsort(new_idx)[-elbow:]
+
+       
+        # all_kn += elbow
+
+        # idx_topk = np.argsort(val_ppr_np)[:]
+        
+        # idx_topk32 = np.argsort(new_idx)
+
+        # all_kn += idx_topk32.shape[0]
 
         # if i ==0:
-        #     print('j_inter: ', j_inter)
-        #     print('val_inter: ', val_inter)
-        #     print('j_diff1: ', j_diff1)
-        #     print('val_diff1: ', val_diff1)
-        #     print('j_diff2: ', j_diff2)
-        #     print('val_diff2: ', val_diff2)
+        #     print('sum top k: ', np.sum(val_ppr_np[idx_topk32]))
 
-        # norm_val_ppr_np = val_ppr_np[x_ind] / np.sum(val_ppr_np[x_ind])
-        # norm_val_core_np = val_core_np[y_ind] / np.sum(val_core_np[y_ind])
+        # sum_rest = sum_all - np.sum(val_ppr_np[idx_topk32])
 
-        # new_idx = (gamma* norm_val_ppr_np) + ((1-gamma) * norm_val_core_np)
-        
-        j_final = np.concatenate((j_inter, j_diff1, j_diff2), axis=0).flatten()
-        val_final = np.concatenate((val_inter, val_diff1, val_diff2), axis=0).flatten()
+        # val_ppr_np = val_ppr_np[idx_topk32] + ((val_ppr_np[idx_topk32]/np.sum(val_ppr_np[idx_topk32]))*sum_rest)
 
         # if i ==0:
-        #     print('j_final: ', j_final)
-        #     print('val_final: ', val_final)
+        #     print('j_ppr: ', j_ppr_np[idx_topk32])
+            # print('new_idx: ', new_idx[idx_topk32])
+            # print('val_ppr: ', val_ppr_np[idx_topk32])
+            # print('sum final: ', np.sum(val_ppr_np))
 
-        # Normalize values
-        val_final = val_final/ np.sum(val_final)
-        
-        # val_np = val_np / np.sum(val_np)
+        js_weighted[i] = j_ppr_np[idx_topk]
+        vals_weighted[i] = val_ppr_np[idx_topk] /np.sum(val_ppr_np[idx_topk])
 
-        # cores = core_numbers[j_np]
-        # cores = cores / np.sum(cores)
+        vals_core_weighted[i] = CR[j_ppr_np[idx_topk]] / np.sum(CR[j_ppr_np[idx_topk]])
 
-        # new_idx = (gamma* val_np) + ((1-gamma) * cores)
+        # continue        
 
-
-        idx_topk = np.argsort(val_final)[::-1]
-
-        #Get elbow point
-        elbow = get_elbow_point(val_final[idx_topk[1:]]) + 1
-
-
-        idx_topk = np.argsort(val_final)[-elbow:]
-
-        # if i == 0:
-        #     print('For node: ', i)
-        #     print('j_np: ', j_final[idx_topk].tolist())
-        #     print('val_np: ', val_final[idx_topk].tolist())
-        #     print('idx_key_nodes: ', idx_key_nodes.tolist())
-
-        all_kn += idx_topk.shape[0]
-
-        js_weighted[i] = j_final[idx_topk]
-        vals_weighted[i] = val_final[idx_topk]
-
-        continue
-
-
-
-        #TOTALLY NEW EXPERIMENT:
-        if i == 0:
-            print('Node: ', nodes[i])
-            print('with core number: ', CR[i].tolist())
-            print('nodes related: ', returned_nodes.tolist())
-            these_cores = [CR[i] for i in returned_nodes]
-            print('with cores: ', these_cores)
-            print('where max is : ', np.max(these_cores))
-
-        
-        # Get all CRs for this node
-        current_cr = CR[returned_nodes]
-
-        current_cr = current_cr/np.sum(current_cr)
-
-         #Get distance from this node to all other key nodes
-        shortest_paths = graph.get_shortest_paths(nodes[i], to=returned_nodes)
-        shortest_paths = np.array([len(s_path) for s_path in shortest_paths])
-
-        #sort them (increasing)
-        idx_crs = np.argsort(shortest_paths)
-
-         #Normalize short paths
-        norm_shortest_paths = np.sum(shortest_paths) - shortest_paths[idx_crs]
-        norm_shortest_paths = norm_shortest_paths/np.sum(norm_shortest_paths)
-
-
-
-        new_exp = (gamma*current_cr[idx_crs]) + ((1-gamma)*norm_shortest_paths)
-
-        idx_topk = np.argsort(new_exp)[-topk:]
-
-        # n_best = get_elbow_point(new_exp[idx_crs][1:]) + 1
-
-        # current_cr = current_cr/ np.sum(current_cr)
-
-
-        all_kn += idx_topk.shape[0]
-
-        js_weighted[i] = returned_nodes[idx_crs][idx_topk]
-        vals_weighted[i] = current_cr[idx_crs][idx_topk]
-        
-
-    global mean_kn 
-    mean_kn = all_kn/len(nodes)
-    print('Mean kn: ', mean_kn)
-    print('gamma: ', gamma)
-    print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
+    # global mean_kn 
+    # mean_kn = all_kn/len(nodes)
+    # print('Mean kn: ', mean_kn)
+    # print('gamma: ', gamma)
+    # print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
     # return js_weighted, vals_weighted
-    return js_weighted, vals_weighted
+    return js_weighted, vals_weighted, vals_core_weighted
 
 
 def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, graph, S=None, gamma=0.1):
     """Calculate the PPR matrix approximately using Anderson."""
 
-    g_networkX = from_scipy_sparse_matrix(adj_matrix)
-    truss = k_truss(g_networkX, 3)
-
+    #Edges
+    # m = np.sum(adj_matrix) /2
+    # print('Edges m: ', m)
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
 
-    neighbors, weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, core_numbers, graph, truss, S=S, gamma=gamma)
+    if core_numbers is None:
+        core_numbers = k_core(adj_matrix.indptr, adj_matrix.indices, out_degree)
+        np.save('cora-cores', core_numbers)
+    
+    CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
+
+    neighbors, weights, core_weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, CR)
 
     
-    return construct_sparse(neighbors, weights, (len(nodes), nnodes))
+    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes))
 
 
 def construct_sparse(neighbors, weights, shape):
@@ -494,8 +742,8 @@ def construct_sparse(neighbors, weights, shape):
 def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, normalization='row', S=None, gamma=0.1):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, S=S, gamma=gamma).tocsr()
-
+    topk_matrix, core_topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, S=S, gamma=gamma)
+    topk_matrix, core_topk_matrix = topk_matrix.tocsr(), core_topk_matrix.tocsr()
 
     if normalization == 'sym':
         # Assume undirected (symmetric) adjacency matrix
@@ -507,6 +755,7 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, norm
         # assert np.all(deg[idx[row]] > 0)
         # assert np.all(deg[col] > 0)
         topk_matrix.data = deg_sqrt[idx[row]] * topk_matrix.data * deg_inv_sqrt[col]
+        core_topk_matrix.data = deg_sqrt[idx[row]] * core_topk_matrix.data * deg_inv_sqrt[col]
     elif normalization == 'col':
         # Assume undirected (symmetric) adjacency matrix
         deg = adj_matrix.sum(1).A1
@@ -521,4 +770,5 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, norm
     else:
         raise ValueError(f"Unknown PPR normalization: {normalization}")
 
-    return topk_matrix, mean_kn
+   
+    return topk_matrix, core_topk_matrix, 0

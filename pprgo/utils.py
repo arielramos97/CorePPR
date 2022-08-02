@@ -30,6 +30,9 @@ def sparse_feeder(M):
 
 class SparseRowIndexer:
     def __init__(self, csr_matrix):
+
+
+        self.csr_matrix = csr_matrix
         data = []
         indices = []
         indptr = []
