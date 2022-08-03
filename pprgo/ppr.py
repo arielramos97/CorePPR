@@ -712,7 +712,7 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, graph, S=Non
 
     if core_numbers is None:
         core_numbers = k_core(adj_matrix.indptr, adj_matrix.indices, out_degree)
-        np.save('cora-cores', core_numbers)
+        np.save('magc-cores', core_numbers)
     
     CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
 
