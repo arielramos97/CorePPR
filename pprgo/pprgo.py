@@ -128,8 +128,19 @@ class PPRGo:
             # Assume undirected (symmetric) adjacency matrix
             deg = adj_matrix.sum(1).A1
             deg_sqrt_inv = 1. / np.sqrt(np.maximum(deg, 1e-12))
+
+            coreRank_matrix = (adj_matrix).multiply(coreRank)
+            normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
+
             for _ in range(nprop):
                 logits = (1 - alpha) * deg_sqrt_inv[:, None] * (adj_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
+
+                logits_core = (1 - alpha) * deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
+
+            
+            #Perform partition
+            # idx_logits = np.argpartition(logits, 32, axis =1)
+            # print('idx_logits: ', idx_logits.shape)
             
             # coreRank_matrix = (adj_matrix).multiply(coreRank)
             # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
@@ -138,7 +149,7 @@ class PPRGo:
 
             # logits_core = deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * local_logits))
 
-            # logits = ((1 -gamma) * logits) + (gamma * logits_core)
+            logits = ((1 -gamma) * logits) + (gamma * logits_core)
 
             # print('coreRank_matrix: ', coreRank_matrix.shape)
             # print('local_logits: ', local_logits.shape)
