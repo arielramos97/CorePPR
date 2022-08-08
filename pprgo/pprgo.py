@@ -131,17 +131,14 @@ class PPRGo:
             for _ in range(nprop):
                 logits = (1 - alpha) * deg_sqrt_inv[:, None] * (adj_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
             
-            coreRank_matrix = (adj_matrix).multiply(coreRank)
-            normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
+            # coreRank_matrix = (adj_matrix).multiply(coreRank)
+            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
 
-            # print(normalized_core_matrix.sum(axis=1))
+            # # print(normalized_core_matrix.sum(axis=1))
 
-            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1)
-            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1))]
+            # logits_core = deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * local_logits))
 
-            logits_core = deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * local_logits))
-
-            logits = ((1 -gamma) * logits) + (gamma * logits_core)
+            # logits = ((1 -gamma) * logits) + (gamma * logits_core)
 
             # print('coreRank_matrix: ', coreRank_matrix.shape)
             # print('local_logits: ', local_logits.shape)
