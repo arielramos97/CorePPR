@@ -1,3 +1,4 @@
+from distutils import core
 import time
 import logging
 import numpy as np
@@ -94,13 +95,15 @@ class PPRGo:
         logits = []
         for i in range(0, nnodes, batch_size_logits):
             batch_attr = attr_matrix[i:i + batch_size_logits]
-            logits.append(sess.run(self.logits,
-                                   {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr}
-                                   ))
-        logits = np.row_stack(logits)
-        return logits
 
-    def predict(self, sess, adj_matrix, attr_matrix, alpha,
+            current_logits, gamma = sess.run([self.logits, self.gamma],
+                                   {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr}
+                                   )
+            logits.append(current_logits)
+        logits = np.row_stack(logits)
+        return logits, gamma
+
+    def predict(self, sess, adj_matrix, attr_matrix, alpha, coreRank,
                 nprop=2, inf_fraction=1.0, ppr_normalization='sym', batch_size_logits=10000):
 
         start = time.time()
@@ -112,8 +115,10 @@ class PPRGo:
             local_logits = np.zeros([adj_matrix.shape[0], logits_sub.shape[1]], dtype=np.float32)
             local_logits[idx_sub] = logits_sub
         else:
-            local_logits = self._get_logits(sess, attr_matrix, adj_matrix.shape[0], batch_size_logits)
+            local_logits, gamma = self._get_logits(sess, attr_matrix, adj_matrix.shape[0], batch_size_logits)
         time_logits = time.time() - start
+
+        print('Inference gamma: ', gamma)
 
         start = time.time()
         row, col = adj_matrix.nonzero()
@@ -125,6 +130,24 @@ class PPRGo:
             deg_sqrt_inv = 1. / np.sqrt(np.maximum(deg, 1e-12))
             for _ in range(nprop):
                 logits = (1 - alpha) * deg_sqrt_inv[:, None] * (adj_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
+            
+            coreRank_matrix = (adj_matrix).multiply(coreRank)
+            normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
+
+            print(normalized_core_matrix.sum(axis=1))
+
+            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1)
+            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1))]
+
+            logits_core = deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * local_logits))
+
+            logits = ((1 -gamma) * logits) + (gamma * logits_core)
+
+            print('coreRank_matrix: ', coreRank_matrix.shape)
+            print('local_logits: ', local_logits.shape)
+            print('logits: ', logits.shape)
+            print('logits_core: ', logits_core.shape)
+
         elif ppr_normalization == 'col':
             deg_col = adj_matrix.sum(0).A1
             deg_col_inv = 1. / np.maximum(deg_col, 1e-12)

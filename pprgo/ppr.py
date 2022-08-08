@@ -700,12 +700,8 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
     return js_weighted, vals_weighted, vals_core_weighted
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, graph, S=None, gamma=0.1):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers):
     """Calculate the PPR matrix approximately using Anderson."""
-
-    #Edges
-    # m = np.sum(adj_matrix) /2
-    # print('Edges m: ', m)
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
     nnodes = adj_matrix.shape[0]
@@ -720,7 +716,7 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, graph, S=Non
                                                 numba.float32(alpha), numba.float32(epsilon), nodes, topk, CR)
 
     
-    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes))
+    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes)), CR
 
 
 def construct_sparse(neighbors, weights, shape):
@@ -729,10 +725,11 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, normalization='row', S=None, gamma=0.1):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row'):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix, core_topk_matrix = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, S=S, gamma=gamma)
+    topk_matrix, core_topk_matrix, coreRank = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers)
+
     topk_matrix, core_topk_matrix = topk_matrix.tocsr(), core_topk_matrix.tocsr()
 
     if normalization == 'sym':
@@ -755,10 +752,11 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, graph, norm
         # assert np.all(deg[idx[row]] > 0)
         # assert np.all(deg[col] > 0)
         topk_matrix.data = deg[idx[row]] * topk_matrix.data * deg_inv[col]
+        core_topk_matrix.data = deg[idx[row]] * core_topk_matrix.data * deg_inv[col]
     elif normalization == 'row':
         pass
     else:
         raise ValueError(f"Unknown PPR normalization: {normalization}")
 
    
-    return topk_matrix, core_topk_matrix, 0
+    return topk_matrix, core_topk_matrix, coreRank, 0
