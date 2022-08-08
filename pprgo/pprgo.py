@@ -134,7 +134,7 @@ class PPRGo:
             coreRank_matrix = (adj_matrix).multiply(coreRank)
             normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
 
-            print(normalized_core_matrix.sum(axis=1))
+            # print(normalized_core_matrix.sum(axis=1))
 
             # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1)
             # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1))]
@@ -143,10 +143,10 @@ class PPRGo:
 
             logits = ((1 -gamma) * logits) + (gamma * logits_core)
 
-            print('coreRank_matrix: ', coreRank_matrix.shape)
-            print('local_logits: ', local_logits.shape)
-            print('logits: ', logits.shape)
-            print('logits_core: ', logits_core.shape)
+            # print('coreRank_matrix: ', coreRank_matrix.shape)
+            # print('local_logits: ', local_logits.shape)
+            # print('logits: ', logits.shape)
+            # print('logits_core: ', logits_core.shape)
 
         elif ppr_normalization == 'col':
             deg_col = adj_matrix.sum(0).A1
