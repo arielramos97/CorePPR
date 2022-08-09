@@ -85,10 +85,6 @@ class PPRGo:
     def gen_feed(self, attr_matrix, ppr_matrix, core_matrix, labels):
         source_idx, neighbor_idx = ppr_matrix.nonzero()
 
-        # print('source_idx shape: ', source_idx.shape)
-        # print('labels shape: ', labels.shape)
-        print('ppr shape: ', ppr_matrix.shape )
-        print('type: ', type(ppr_matrix.shape[0]))
 
         batch_attr = attr_matrix[neighbor_idx]
         feed = {
@@ -124,7 +120,7 @@ class PPRGo:
 
             logits.append(current_logits)
             final_logits.append(weighted_logits)
-            
+
         logits = np.row_stack(logits)
         final_logits = np.row_stack(final_logits)
         return logits, gamma, final_logits
