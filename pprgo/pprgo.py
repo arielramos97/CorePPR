@@ -9,6 +9,9 @@ from .utils import sparse_feeder
 from .tf_utils import mixed_dropout
 
 
+import scipy.sparse as sp
+
+
 class PPRGo:
     def __init__(self, d, nc, hidden_size, nlayers, lr, gamma,
                  weight_decay, dropout, sparse_features=True):
@@ -23,6 +26,7 @@ class PPRGo:
         self.batch_core = tf.placeholder(tf.float32, [None], 'core_weights')
         self.batch_idx = tf.placeholder(tf.int32, [None], 'idx')
         self.batch_labels = tf.placeholder(tf.int32, [None], 'labels')
+        self.batch_size = tf.placeholder(tf.int32, None, 'batch_size')
 
         self.gamma = tf.get_variable('gamma', dtype=tf.float32, initializer=gamma, trainable=True)
         # self.gamma = tf.get_variable('gamma', [2,1], trainable=True) #, constraint=lambda x: tf.clip_by_value(x, 0, 1))
@@ -52,17 +56,17 @@ class PPRGo:
         self.core_ppr = ((1-self.gamma)*self.batch_pprw) + ((self.gamma) * self.batch_core)
 
 
-        weighted_logits = tf.tensor_scatter_nd_add(tf.zeros((tf.shape(self.batch_labels)[0], nc)),
+        self.weighted_logits = tf.tensor_scatter_nd_add(tf.zeros((self.batch_size, nc)),
                                                    self.batch_idx[:, None],
                                                    self.logits * self.core_ppr[:, None])
 
         loss_per_node = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.batch_labels,
-                                                                       logits=weighted_logits)
+                                                                       logits=self.weighted_logits)
 
         l2_reg = tf.add_n([tf.nn.l2_loss(weight) for weight in Ws])
         self.loss = tf.reduce_mean(loss_per_node) + weight_decay * l2_reg
 
-        self.preds = tf.argmax(weighted_logits, 1)
+        self.preds = tf.argmax(self.weighted_logits, 1)
         self.update_op = tf.train.AdamOptimizer(lr).minimize(self.loss)
 
         self.cached = {}
@@ -81,6 +85,11 @@ class PPRGo:
     def gen_feed(self, attr_matrix, ppr_matrix, core_matrix, labels):
         source_idx, neighbor_idx = ppr_matrix.nonzero()
 
+        # print('source_idx shape: ', source_idx.shape)
+        # print('labels shape: ', labels.shape)
+        print('ppr shape: ', ppr_matrix.shape )
+        print('type: ', type(ppr_matrix.shape[0]))
+
         batch_attr = attr_matrix[neighbor_idx]
         feed = {
             self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
@@ -88,22 +97,77 @@ class PPRGo:
             self.batch_core: core_matrix[source_idx, neighbor_idx].A1,
             self.batch_labels: labels,
             self.batch_idx: source_idx,
+            self.batch_size: ppr_matrix.shape[0],
         }
         return feed
 
-    def _get_logits(self, sess, attr_matrix, nnodes, batch_size_logits=10000):
+    def _get_logits(self, sess, attr_matrix, nnodes, ppr_matrix, core_matrix, batch_size_logits=10000):
         logits = []
+        final_logits = []
+
         for i in range(0, nnodes, batch_size_logits):
+
+            current_ppr_matrix = ppr_matrix[i:i + batch_size_logits]
+            current_core_matrix = core_matrix[i:i + batch_size_logits]
+
+            source_idx, neighbor_idx = current_ppr_matrix.nonzero()
+            batch_attr = attr_matrix[neighbor_idx]
+
+            current_logits, gamma, weighted_logits = sess.run([self.logits, self.gamma, self.weighted_logits],
+                                    {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
+                                        self.batch_pprw: current_ppr_matrix[source_idx, neighbor_idx].A1,
+                                        self.batch_core: current_core_matrix[source_idx, neighbor_idx].A1,
+                                        self.batch_idx: source_idx,
+                                        self.batch_size: current_ppr_matrix.shape[0],
+                                    }
+                                    )
+
+            logits.append(current_logits)
+            final_logits.append(weighted_logits)
+            
+        logits = np.row_stack(logits)
+        final_logits = np.row_stack(final_logits)
+        return logits, gamma, final_logits
+
+
+
+        
+
+        for i in range(0, nnodes, batch_size_logits):
+
+            current_ppr_matrix = ppr_matrix[i:i + batch_size_logits]
+            current_core_matrix = core_matrix[i:i + batch_size_logits]
+
+            print('current_ppr_matrix: ', current_ppr_matrix.shape)
+            print('current_core_matrix: ', current_core_matrix.shape)
+            
+            source_idx, neighbor_idx = current_ppr_matrix.nonzero()
+
+            print('batch_attr: ', attr_matrix.shape)
+
             batch_attr = attr_matrix[i:i + batch_size_logits]
 
-            current_logits, gamma = sess.run([self.logits, self.gamma],
-                                   {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr}
-                                   )
-            logits.append(current_logits)
-        logits = np.row_stack(logits)
-        return logits, gamma
+            print('batch_attr: ', batch_attr.shape)
 
-    def predict(self, sess, adj_matrix, attr_matrix, alpha, coreRank,
+            current_logits, gamma, weighted_logits = sess.run([self.logits, self.gamma, self.weighted_logits],
+                                   {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
+                                    self.batch_pprw: current_ppr_matrix[source_idx, neighbor_idx].A1,
+                                    self.batch_core: current_core_matrix[source_idx, neighbor_idx].A1,
+                                    self.batch_idx: source_idx,
+                                    self.batch_size: batch_size_logits,
+                                   }
+                                   )
+            # current_logits = None
+            # weighted_logits = None
+            # gamma = None
+
+            logits.append(current_logits)
+            final_logits.append(weighted_logits)
+        logits = np.row_stack(logits)
+        final_logits = np.row_stack(final_logits)
+        return logits, gamma, final_logits
+
+    def predict(self, sess, adj_matrix, attr_matrix, alpha, ppr_topk_test, core_topk_test,
                 nprop=2, inf_fraction=1.0, ppr_normalization='sym', batch_size_logits=10000):
 
         start = time.time()
@@ -111,16 +175,24 @@ class PPRGo:
             idx_sub = np.random.choice(adj_matrix.shape[0], int(inf_fraction * adj_matrix.shape[0]), replace=False)
             idx_sub.sort()
             attr_sub = attr_matrix[idx_sub]
-            logits_sub = self._get_logits(sess, attr_sub, idx_sub.shape[0], batch_size_logits)
+            logits_sub = self._get_logits(sess, attr_sub, idx_sub.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
             local_logits = np.zeros([adj_matrix.shape[0], logits_sub.shape[1]], dtype=np.float32)
             local_logits[idx_sub] = logits_sub
         else:
-            local_logits, gamma = self._get_logits(sess, attr_matrix, adj_matrix.shape[0], batch_size_logits)
+            local_logits, gamma, weighted_logits = self._get_logits(sess, attr_matrix, ppr_topk_test.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
         time_logits = time.time() - start
 
         print('Inference gamma: ', gamma)
-
         start = time.time()
+        predictions = weighted_logits.argmax(1)
+        time_propagation = time.time() - start
+
+        return predictions, time_logits, time_propagation, weighted_logits
+
+
+
+
+
         row, col = adj_matrix.nonzero()
         logits = local_logits.copy()
 
@@ -129,13 +201,32 @@ class PPRGo:
             deg = adj_matrix.sum(1).A1
             deg_sqrt_inv = 1. / np.sqrt(np.maximum(deg, 1e-12))
 
-            coreRank_matrix = (adj_matrix).multiply(coreRank)
-            normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
+            # coreRank_matrix = (adj_matrix).multiply(coreRank)
+            # normalized_core_matrix = coreRank_matrix.multiply(1/coreRank_matrix.sum(axis=1).A1[:, None])
 
             for _ in range(nprop):
                 logits = (1 - alpha) * deg_sqrt_inv[:, None] * (adj_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
 
-                logits_core = (1 - alpha) * deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * logits)) + alpha * local_logits
+            
+            # right_term = sp.eye(adj_matrix.shape[0])
+            # adj_power = adj_matrix.multiply(deg_sqrt_inv[:, None])
+
+
+            # for k in range(1, nprop):
+            #     if k ==1:
+            #         right_term += (1-alpha)  * adj_power
+            #     else:
+            #         adj_power = adj_power @ adj_power
+            #         right_term += np.power(1-alpha, k) * adj_power
+
+            # right_term = alpha * right_term
+
+            # adj_power = adj_power @ adj_power
+
+            # left_term = np.power(1-alpha, nprop) * adj_power
+
+            # new_logits = (left_term +right_term) @  logits
+
 
             
             #Perform partition
@@ -149,11 +240,11 @@ class PPRGo:
 
             # logits_core = deg_sqrt_inv[:, None] * (normalized_core_matrix @ (deg_sqrt_inv[:, None] * local_logits))
 
-            logits = ((1 -gamma) * logits) + (gamma * logits_core)
+            # logits = ((1 -gamma) * logits) + (gamma * logits_core)
 
             # print('coreRank_matrix: ', coreRank_matrix.shape)
-            # print('local_logits: ', local_logits.shape)
-            # print('logits: ', logits.shape)
+            print('local_logits: ', local_logits.shape)
+            print('logits: ', logits.shape)
             # print('logits_core: ', logits_core.shape)
 
         elif ppr_normalization == 'col':
@@ -171,7 +262,7 @@ class PPRGo:
         predictions = logits.argmax(1)
         time_propagation = time.time() - start
 
-        return predictions, time_logits, time_propagation
+        return predictions, time_logits, time_propagation, logits
 
     def get_vars(self, sess):
         return sess.run(tf.trainable_variables())
