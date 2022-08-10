@@ -295,7 +295,7 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers):
 
     if core_numbers is None:
         core_numbers = k_core(adj_matrix.indptr, adj_matrix.indices, out_degree)
-        np.save('magc-cores', core_numbers)
+        np.save('pubmed-cores', core_numbers)
     
     CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
 
