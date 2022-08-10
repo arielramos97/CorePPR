@@ -4,9 +4,6 @@ import scipy.sparse as sp
 import math
 from elbow_point import get_elbow_point
 
-
-from networkx import from_scipy_sparse_matrix, k_truss, shortest_path
-
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
     alpha_eps = alpha * epsilon
@@ -70,313 +67,6 @@ def _calc_ppr_node2(inode, indptr, indices, deg, alpha, epsilon):
 
     return j, val
 
-
-
-@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
-def _calc_core_node(inode, core_numbers, CR, indices, indptr,  deg, alpha, epsilon, key_nodes):
-
-    alpha_eps = alpha * epsilon
-    f32_0 = numba.float32(0)
-    p = {inode: f32_0}
-    r = {}
-    r[inode] = alpha
-    q = [inode]
-
-
-    while len(q) > 0:
-        unode = q.pop()
-
-        res = r[unode] if unode in r else f32_0
-        if unode in p:
-            p[unode] += res
-        else:
-            p[unode] = res
-        r[unode] = f32_0
-
-        has_key_nodes, sum_cr = get_sum(indices, indptr, unode, CR, key_nodes)
-    
-        i = 0
-
-        #If no key nodes in neighbours, apply weighted sum
-        if has_key_nodes:
-
-            for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-
-                if vnode in key_nodes:
-
-                    percentage = CR[vnode] / sum_cr
-                    # print('percentage: ', percentage)
-
-                    _val = (1 - alpha) * res * percentage
-
-                    if vnode in r:
-                        r[vnode] += _val
-                    else:
-                        r[vnode] = _val
-
-                    res_vnode = r[vnode] if vnode in r else f32_0
-
-                    if res_vnode >= alpha_eps * deg[vnode]:
-                        if vnode not in q:
-                            q.append(vnode)
-        else:
-            
-            for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-
-                percentage = CR[vnode] / sum_cr
-                # print('percentage: ', percentage)
-
-                _val = (1 - alpha) * res / deg[unode]
-
-                if vnode in r:
-                    r[vnode] += _val
-                else:
-                    r[vnode] = _val
-
-                res_vnode = r[vnode] if vnode in r else f32_0
-
-                if res_vnode >= alpha_eps * deg[vnode]:
-                    if vnode not in q:
-                        q.append(vnode)
-        
-        i +=1
-
-    return list(p.keys()), list(p.values())
-
-
-@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32, 'rmax':numba.float32, 'rsum': numba.float32, 'rmax_prime':numba.float32, 'n_random_walks':numba.int32, 'v_stopping':numba.int32})
-def powerPush2(inode, indptr, indices, deg, alpha, lambda_, nodes, m, W, epoch_num, scanThreshold):
-
-
-    # lambda_ = 0.3
-    rmax = lambda_/m
-
-    f32_0 = numba.float32(0)
-    f32_1 = numba.float32(1)
-
-    r = np.zeros((len(nodes)))
-    p = np.zeros((len(nodes)))
-
-    # r = [f32_0] * (len(indptr) -1)
-    # p = [f32_0] * (len(indptr) -1)
-
-    p[inode] = f32_0
-    r[inode] = f32_1
-    q = [inode]
-
-    rsum = f32_1
-
-    while (len(q) > 0) and (len(q) <= scanThreshold) and rsum > lambda_:
-       
-        unode = q.pop()
-
-        res = r[unode]
-        p[unode] += alpha* res
-        
-
-        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-            _val = (1 - alpha) * res / deg[unode]
-            r[vnode] += _val
-            rsum += _val
-            
-            res_vnode = r[vnode] 
-            if res_vnode >= rmax * deg[vnode]:
-                if vnode not in q:
-                    q.append(vnode)
-        
-        r[unode] = f32_0
-        rsum -= res
-        
-    if rsum >lambda_:
-
-        for i in numba.prange(1, epoch_num+1):
-
-            rmax_prime = lambda_**(i/epoch_num) / m
-
-            while np.sum(r) > m * rmax_prime:
-
-                for unode in nodes:
-                    res = r[unode]
-                    if res >= rmax_prime * deg[unode]:
-                        
-                        p[unode] += alpha * r[unode]
-
-                        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-                            _val = (1-alpha)* res / deg[unode]
-                            
-                            r[vnode] += _val
-                            rsum += _val
-
-                        r[unode] = f32_0
-                        rsum -= res
-                        
-    # Refine  
-    # rmax = 1/W  
-
-    # while True:
-
-    #     changed = False
-    #     for unode in nodes:
-    #         res = r[unode]
-    #         if res >= rmax * deg[unode]:
-    #             changed = True
-    #             p[unode] += alpha * res
-            
-    #             for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-    #                 _val = (1-alpha)* res / deg[unode]
-                    
-    #                 r[vnode] += _val
-                
-    #             r[unode] = f32_0
-    #         else:
-    #             break
-        
-    #     if changed == False:
-    #         break
-
-    v_gtz = np.where(r >f32_0)
-
-    
-    # for unode in nodes[v_gtz]:
-    #     res = r[unode] 
-
-    #     n_random_walks = math.ceil(res * W)
-        
-    #     for i in numba.prange(n_random_walks):
-    #         v_stopping = random_walk(unode, indptr, indices, deg, alpha)
-
-    #         p[v_stopping] += res / n_random_walks
-               
-                
-    return p
-
-
-
-
-@numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32, 'rsum': numba.float32, 'rmax_prime':numba.float32, 'n_random_walks':numba.float32})
-def powerPush(inode, indptr, indices, deg, alpha, lambda_, nodes, m, W):
-
-    # print('Inside power psuh')
-
-    epoch_num = 8
-    scanThreshold = len(nodes)/4
-
-
-    rmax = lambda_/m
-    
-    f32_0 = numba.float32(0)
-    f32_1 = numba.float32(1)
-    p = {inode: f32_0}
-    r = {}
-    r[inode] = f32_1
-    q = [inode]
-
-    rsum = f32_1
-
-    j = 0
-
-
-
-    while (len(q) > 0) and (len(q) <= scanThreshold) and rsum > lambda_:
-       
-        unode = q.pop()
-
-        res = r[unode] if unode in r else f32_0
-        if unode in p:
-            p[unode] += alpha* res
-        else:
-            p[unode] = alpha* res
-        
-        
-
-        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-            _val = (1 - alpha) * res / deg[unode]
-            if vnode in r:
-                r[vnode] += _val
-            else:
-                r[vnode] = _val
-            
-            rsum += _val
-            
-
-            res_vnode = r[vnode] if vnode in r else f32_0
-            if res_vnode >= rmax * deg[vnode]:
-                if vnode not in q:
-                    q.append(vnode)
-        
-        r[unode] = f32_0
-        rsum -= res
-        
-    if rsum >lambda_:
-
-        for i in numba.prange(1, epoch_num+1):
-
-            rmax_prime = lambda_**(i/epoch_num) / m
-
-            while rsum > m * rmax_prime:
-
-                for unode in nodes:
-                    res = r[unode] if unode in r else f32_0
-                    if res >= rmax_prime * deg[unode]:
-                        if unode in p:
-                            p[unode] += alpha * r[unode]
-                        else:
-                            p[unode] = alpha * r[unode]
-                                                
-
-                        for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-                            _val = (1-alpha)* res / deg[unode]
-                            if vnode in r:
-                                r[vnode] += _val
-                            else:
-                                r[vnode] = _val
-                            rsum += _val
-
-                        r[unode] = f32_0
-                        rsum -= res
-                        
-    # Refine  
-    rmax = 1/W  
-    for unode in nodes:
-
-        while(True):
-            res = r[unode] if unode in r else f32_0
-            if res >= rmax * deg[unode]:
-                if unode in p:
-                    p[unode] += alpha * res
-                else:
-                    p[unode] = alpha * res
-
-                for vnode in indices[indptr[unode]:indptr[unode + 1]]:
-                    _val = (1-alpha)* res / deg[unode]
-                    if vnode in r:
-                        r[vnode] += _val
-                    else:
-                        r[vnode] = _val
-                r[unode] = f32_0
-            else:
-                break
-            
-
-    for unode in nodes:
-        res = r[unode] if unode in r else f32_0
-
-        if res > f32_0:
-            #Perform random walks
-            n_random_walks = math.ceil(res * W)
-            
-            for i in numba.prange(n_random_walks):
-                v_stopping = random_walk(unode, indptr, indices, deg, alpha)
-
-                if v_stopping in p:
-                    p[v_stopping] += res / n_random_walks
-                else:
-                    p[v_stopping] = res / n_random_walks
-                
-
-
-    return list(p.keys()), list(p.values())
-
 @numba.njit(cache=True)
 def k_core(indptr, indices, deg):
 
@@ -395,9 +85,6 @@ def k_core(indptr, indices, deg):
         if deg[nodes[i]] > curr_degree:
             bin_boundaries.extend([i] * (deg[nodes[i]] - curr_degree))
             curr_degree = deg[nodes[i]]
-
-
-
 
     node_pos = np.zeros((len(indptr)-1), dtype=np.int64)
 
@@ -429,29 +116,7 @@ def k_core(indptr, indices, deg):
                 bin_boundaries[core[nbrs[nodes[i]][j]]] += 1
                 core[nbrs[nodes[i]][j]] -= 1
     return core
-
-
-@numba.njit(cache=True)
-def get_rsum(r_copy):
-
-    return np.sum(r_copy)
-
-
-
-@numba.njit(cache=True)
-def random_walk(inode, indptr, indices, deg, alpha):
-
-
-    v = inode
-
-    while(True):
-        if np.random.uniform(0,1) < alpha:
-            return v
-
-        if deg[v] > 0:
-            v = np.random.choice(indices[indptr[v]:indptr[v + 1]])             
-        else:
-            v = inode    
+   
 
 @numba.njit(cache=True)
 def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
@@ -464,30 +129,13 @@ def calc_ppr(indptr, indices, deg, alpha, epsilon, nodes):
     return js, vals
 
 @numba.njit(cache=True)
-def get_sum(indices, indptr, unode, CR, key_nodes):
-
-    CR_neigbours = np.array([CR[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]] if vnode in key_nodes])
-
-    if CR_neigbours.size != 0:
-        return True, np.sum(CR_neigbours)
-    
-    CR_neigbours = np.array([CR[vnode] for vnode in indices[indptr[unode]:indptr[unode + 1]]])
-    return False, np.sum(CR_neigbours)
-
-@numba.njit(cache=True)
 def coreRank(indptr, indices, cores):
 
     CR = np.zeros((len(indptr)-1), dtype=np.float32)
 
-    # maximum = 0
     for i in numba.prange(len(indptr) -1):
-
-        # if maximum < np.sum(cores[indices[indptr[i]:indptr[i + 1]]]):
-        #     maximum = np.sum(cores[indices[indptr[i]:indptr[i + 1]]])
-
         CR[i] = np.sum(cores[indices[indptr[i]:indptr[i + 1]]], dtype=np.float32)
     
-    # print('maxium: ', maximum)
     return CR
 
 
@@ -495,8 +143,6 @@ def coreRank(indptr, indices, cores):
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR):
 
     
-
-
     # print('CR: ', np.max(CR))
     # js = [np.zeros(0, dtype=np.int64)] * len(nodes)
     # vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
@@ -505,76 +151,13 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
     # all_kn = numba.float32(0)
     # len_y = []
 
-    #Check algorithm k-core
-    # print('Computing core numbers...')
-
-    # core_numbers = k_core(indptr, indices, deg)
-
-    # for i in range(5):
-    #     print('core for node: ', i, core_numbers2[i])
-    #     print('core original for node: ', i, core_numbers[i])
-
-    # core_numbers = core_numbers2
-
-
-    # np.save('magC-cores', core_numbers)
-
-    
-
-    # print('Computing CR...')
-    # CR = coreRank(indices, indptr, core_numbers)
-    
-
-    # print('Done computing CR...')
-    # print('CR: ', CR[0:20])
-
-    # CR = CR/np.sum(CR)
-    
-    # #sort CR in decresing order
-    # idx_decreasing_CR = np.argsort(CR)[::-1]
-    # n_best = get_elbow_point(CR[idx_decreasing_CR])
-
-    # print('CRE n_best: ', n_best)
-    # #set of key nodes
-    # key_nodes = idx_decreasing_CR[:n_best]
-    # print('idx_key_nodes: ', idx_key_nodes.shape)
-    # print('indptr - 1 ', len(indptr) -1)
-
 
 
     js_weighted = [np.zeros(0, dtype=np.int64)] * (len(nodes))
     vals_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
 
     vals_core_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
-
-    # epsilon = 0.7
-    # # u = 1 / len(nodes)
-    # u = 1/ (len(indptr) -1)
-    # print('u: ', u)
-    # W = (2*(2+ (2.0/3.0) * epsilon)* np.log((len(indptr) -1)))/(epsilon**2 * u)
-    # # W = (2*(2+ (2.0/3.0) * epsilon)* np.log(len(nodes)))/(epsilon**2 * u)
-    # print('W: ', W)
-
-    # lambda_ = m/W
-    # # lambda_ = min(10**-8, 1/m)
-    # # lambda_ = 0.01
-
-    # print('lambda: ', lambda_)
-
-    # rmax = lambda_/m
-    # print('rmax: ', rmax)
-
-    # print('1/W: ', 1/W)
-
-    # all_nodes = np.arange((len(indptr)-1))
-
-    # epoch_num = 8
-    # scanThreshold = (len(indptr)-1)/4
-    # epsilon = 1e-4
-
    
-
-    # print('Starting ppr calculation...')
     for i in numba.prange(len(nodes)):
 
         # if i % 100 ==0:
@@ -605,8 +188,12 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
         
 
 
-        #Take only inital 32
-        idx_topk = np.argsort(val_ppr_np)[-topk:]
+        #Take only inital 32 if topk provide, else take them all
+        if topk is None:
+            idx_topk = np.argsort(val_ppr_np)
+        else:
+            idx_topk = np.argsort(val_ppr_np)[-topk:]
+            
 
         # val_ppr_np_topk = val_ppr_np[idx_topk] /np.sum(val_ppr_np[idx_topk])
 
