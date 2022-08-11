@@ -173,7 +173,7 @@ def coreRank(indptr, indices, cores):
 @numba.njit(cache=True, parallel=True)
 def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR, elbow):
 
-    all_kn = 0
+    sum_k = 0
     # len_y = []
 
     js = [np.zeros(0, dtype=np.int64)] * (len(nodes))
@@ -202,7 +202,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
                 idx_topk = np.argsort(ppr)[-topk:]
             
         
-        all_kn += idx_topk.shape[0]
+        sum_k += idx_topk.shape[0]
 
         js[i] = j[idx_topk]
         pprs[i] = ppr[idx_topk] /np.sum(ppr[idx_topk])  #Normalization
@@ -210,10 +210,10 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
         coreRanks[i] = CR[j[idx_topk]] / np.sum(CR[j[idx_topk]])
 
     # global mean_kn 
-    mean_kn = all_kn/len(nodes)
-    print('Mean kn: ', mean_kn)
+    mean_k = sum_k/len(nodes)
+    print('Mean k: ', mean_k)
     # print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
-    return js, pprs, coreRanks, mean_kn
+    return js, pprs, coreRanks, mean_k
 
 
 def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, elbow):
@@ -228,11 +228,11 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, elbow):
     
     CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
 
-    neighbors, weights, core_weights, mean_kn = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
+    neighbors, weights, core_weights, mean_k = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
                                                 numba.float32(alpha), numba.float32(epsilon), nodes, topk, CR, elbow)
 
     
-    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes)), mean_kn
+    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes)), mean_k
 
 
 def construct_sparse(neighbors, weights, shape):
@@ -244,7 +244,7 @@ def construct_sparse(neighbors, weights, shape):
 def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row', elbow=False):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix, core_topk_matrix, mean_kn = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, elbow)
+    topk_matrix, core_topk_matrix, mean_k = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, elbow)
 
     topk_matrix, core_topk_matrix = topk_matrix.tocsr(), core_topk_matrix.tocsr()
 
@@ -275,4 +275,4 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalizati
         raise ValueError(f"Unknown PPR normalization: {normalization}")
 
    
-    return topk_matrix, core_topk_matrix, mean_kn
+    return topk_matrix, core_topk_matrix, mean_k
