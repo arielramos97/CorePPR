@@ -216,7 +216,7 @@ def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR
     return js, pprs, coreRanks, mean_k
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, elbow):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, data_file, topk, core_numbers, elbow):
     """Calculate the PPR matrix approximately using Anderson."""
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
@@ -224,7 +224,8 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, elbow):
 
     if core_numbers is None:
         core_numbers = k_core(adj_matrix.indptr, adj_matrix.indices, out_degree)
-        np.save('pubmed-cores', core_numbers)
+        np.save('coredata/'+data_file[5:-4]+'-cores', core_numbers)
+
     
     CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
 
@@ -241,10 +242,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row', elbow=False):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, data_file, topk, core_numbers, normalization='row', elbow=False):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix, core_topk_matrix, mean_k = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, elbow)
+    topk_matrix, core_topk_matrix, mean_k = ppr_topk(adj_matrix, alpha, eps, idx, data_file, topk, core_numbers, elbow)
 
     topk_matrix, core_topk_matrix = topk_matrix.tocsr(), core_topk_matrix.tocsr()
 
