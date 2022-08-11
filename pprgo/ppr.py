@@ -1,8 +1,9 @@
+from statistics import mean
 import numba
 import numpy as np
 import scipy.sparse as sp
 import math
-from elbow_point import get_elbow_point
+# from elbow_point import get_elbow_point
 
 @numba.njit(cache=True, locals={'_val': numba.float32, 'res': numba.float32, 'res_vnode': numba.float32})
 def _calc_ppr_node(inode, indptr, indices, deg, alpha, epsilon):
@@ -66,6 +67,36 @@ def _calc_ppr_node2(inode, indptr, indices, deg, alpha, epsilon):
     val = p[j]
 
     return j, val
+
+@numba.njit(cache=True)
+def get_elbow_point(sorted_scores):
+
+    if (len(sorted_scores)<2):
+        elbow_point = 1
+        return elbow_point
+    else:  
+
+        first_point = np.zeros((2), dtype=np.float32)
+        first_point[0] = 0
+        first_point[1] = sorted_scores[0]
+
+        last_point = np.zeros((2), dtype=np.float32)
+        last_point[0] = len(sorted_scores)-1
+        last_point[1] = sorted_scores[-1]
+
+
+        k =1
+        distances = np.zeros((len(sorted_scores)), dtype=np.float32)
+
+        for i in numba.prange(len(sorted_scores)):
+            numerator = abs((last_point[1] - first_point[1])*k - (last_point[0] - first_point[0])*sorted_scores[i] + last_point[0]*first_point[1] - last_point[1]*first_point[0])
+            denominator = (pow((last_point[1] - first_point[1]),2) + pow(pow((last_point[0] - first_point[0]),2),0.5))
+            distances[i] = numerator/denominator
+            k = k + 1
+
+        elbow_point = np.argmax(distances)
+        return elbow_point
+
 
 @numba.njit(cache=True)
 def k_core(indptr, indices, deg):
@@ -140,154 +171,52 @@ def coreRank(indptr, indices, cores):
 
 
 @numba.njit(cache=True, parallel=True)
-def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR):
+def calc_ppr_topk_parallel(indptr, indices, deg, alpha, epsilon, nodes, topk, CR, elbow):
 
-    
-    # print('CR: ', np.max(CR))
-    # js = [np.zeros(0, dtype=np.int64)] * len(nodes)
-    # vals = [np.zeros(0, dtype=np.float32)] * len(nodes)
-
-
-    # all_kn = numba.float32(0)
+    all_kn = 0
     # len_y = []
 
-
-
-    js_weighted = [np.zeros(0, dtype=np.int64)] * (len(nodes))
-    vals_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
-
-    vals_core_weighted = [np.zeros(0, dtype=np.float32)] * (len(nodes))
+    js = [np.zeros(0, dtype=np.int64)] * (len(nodes))
+    pprs = [np.zeros(0, dtype=np.float32)] * (len(nodes))
+    coreRanks = [np.zeros(0, dtype=np.float32)] * (len(nodes))
    
     for i in numba.prange(len(nodes)):
-
-        # if i % 100 ==0:
-        #     print(i)
-
         
-        # j_ppr, val_ppr = powerPush(nodes[i], indptr, indices, deg, alpha, lambda_, all_nodes, m, W)
-        # p = powerPush2(nodes[i], indptr, indices, deg, alpha, lambda_, all_nodes, m, W, epoch_num, scanThreshold)
-
-        
-        j_ppr_np, val_ppr_np = _calc_ppr_node2(nodes[i], indptr, indices, deg, alpha, epsilon)
+        j, ppr = _calc_ppr_node2(nodes[i], indptr, indices, deg, alpha, epsilon)
 
 
         #For statistics (min, max, mean) purposes
         # len_y.append(len(val_ppr_np))
 
+        if elbow == True:
+            idx_topk = np.argsort(ppr) 
+            elbow_point = get_elbow_point(ppr[idx_topk[:-1][::-1]]) + 1  #Ignore last because it contains most of the probability mass, then include count + 1
+            idx_topk = idx_topk[-elbow_point:]
         
-
-        # if i ==0:
-        #     print('len: ', len(j_ppr_np))
-        #     print('sum: ', np.sum(val_ppr_np))
-        #     print('j: ', j_ppr_np)
-        #     print('val: ', val_ppr_np)
-
-
-        # j_ppr_np, val_ppr_np = _calc_ppr_node(nodes[i], indptr, indices, deg, alpha, epsilon)
-        # j_ppr_np, val_ppr_np = np.array(j_ppr_np), np.array(val_ppr_np)
-        
-
-
-        #Take only inital 32 if topk provide, else take them all
-        if topk is None:
-            idx_topk = np.argsort(val_ppr_np)
         else:
-            idx_topk = np.argsort(val_ppr_np)[-topk:]
+
+            #Take only inital 32 if topk provided, else take them all
+            if topk is None:
+                idx_topk = np.argsort(ppr)
+            else:
+                idx_topk = np.argsort(ppr)[-topk:]
             
-
-        # val_ppr_np_topk = val_ppr_np[idx_topk] /np.sum(val_ppr_np[idx_topk])
-
-
-        # cores = 
-        # if i ==0:
-        #     print('cores: ', cores)
-        # if i ==0:
-        #     print('cores: ', cores)
-
-        # if i ==0:
-        #     print('type cores: ', cores.dtype)
-
-        # val_ppr_np_topk = val_ppr_np_topk * cores
-
-        # new_idx = (gamma* val_ppr_np_topk) + ((1-gamma) * cores)
- 
-
         
+        all_kn += idx_topk.shape[0]
 
-        # shortest_paths = np.array([np.array(shortest_path(graph, nodes[i], k)) for k in key_nodes])
-        # length_paths = np.array([path.size for path in shortest_paths])
-        # print('length_paths: ', length_paths)
+        js[i] = j[idx_topk]
+        pprs[i] = ppr[idx_topk] /np.sum(ppr[idx_topk])  #Normalization
 
-        # #Take the first top k
-        # idx_shortest_nodes = np.argsort(length_paths)[:topk]
-        # closest_paths = shortest_paths[idx_shortest_nodes]
-        # closest_nodes = key_nodes[idx_shortest_nodes]
-        # closest_lenghts = length_paths[idx_shortest_nodes]
-
-        # print('closest_paths: ', closest_paths.shape)
-        # print('closest_nodes: ', closest_nodes.shape, closest_nodes)
-
-        
-
-        # print(shortest_paths.shape)
-
-        # j_core, val_core =  _calc_core_node(nodes[i], core_numbers, CR,  indices, indptr, deg, alpha, epsilon, key_nodes)
-    
-        
-
-        # j_core_np, val_core_np = np.array(j_core), np.array(val_core)
-
-        # val_ppr_np = val_ppr_np/ np.sum(val_ppr_np)
-
-        # val_ppr_np2 = val_ppr_np2/ np.sum(val_ppr_np2)
-
-        # idx_topk = np.argsort(new_idx)[::-1]  #decreasing order
-
-        # # #Get elbow point
-        # elbow = get_elbow_point(new_idx[idx_topk[1:]]) + 1
-
-
-        # idx_topk32 = np.argsort(new_idx)[-elbow:]
-
-       
-        # all_kn += elbow
-
-        # idx_topk = np.argsort(val_ppr_np)[:]
-        
-        # idx_topk32 = np.argsort(new_idx)
-
-        # all_kn += idx_topk32.shape[0]
-
-        # if i ==0:
-        #     print('sum top k: ', np.sum(val_ppr_np[idx_topk32]))
-
-        # sum_rest = sum_all - np.sum(val_ppr_np[idx_topk32])
-
-        # val_ppr_np = val_ppr_np[idx_topk32] + ((val_ppr_np[idx_topk32]/np.sum(val_ppr_np[idx_topk32]))*sum_rest)
-
-        # if i ==0:
-        #     print('j_ppr: ', j_ppr_np[idx_topk32])
-            # print('new_idx: ', new_idx[idx_topk32])
-            # print('val_ppr: ', val_ppr_np[idx_topk32])
-            # print('sum final: ', np.sum(val_ppr_np))
-
-        js_weighted[i] = j_ppr_np[idx_topk]
-        vals_weighted[i] = val_ppr_np[idx_topk] /np.sum(val_ppr_np[idx_topk])
-
-        vals_core_weighted[i] = CR[j_ppr_np[idx_topk]] / np.sum(CR[j_ppr_np[idx_topk]])
-
-        # continue        
+        coreRanks[i] = CR[j[idx_topk]] / np.sum(CR[j[idx_topk]])
 
     # global mean_kn 
-    # mean_kn = all_kn/len(nodes)
-    # print('Mean kn: ', mean_kn)
-    # print('gamma: ', gamma)
+    mean_kn = all_kn/len(nodes)
+    print('Mean kn: ', mean_kn)
     # print('Overall len y: ', (sum(len_y)/len(len_y)), 'max: ', max(len_y), ' min: ', min(len_y))
-    # return js_weighted, vals_weighted
-    return js_weighted, vals_weighted, vals_core_weighted
+    return js, pprs, coreRanks, mean_kn
 
 
-def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers):
+def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers, elbow):
     """Calculate the PPR matrix approximately using Anderson."""
 
     out_degree = np.sum(adj_matrix > 0, axis=1).A1
@@ -299,11 +228,11 @@ def ppr_topk(adj_matrix, alpha, epsilon, nodes, topk, core_numbers):
     
     CR = coreRank(adj_matrix.indptr, adj_matrix.indices, core_numbers)
 
-    neighbors, weights, core_weights = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
-                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, CR)
+    neighbors, weights, core_weights, mean_kn = calc_ppr_topk_parallel(adj_matrix.indptr, adj_matrix.indices, out_degree,
+                                                numba.float32(alpha), numba.float32(epsilon), nodes, topk, CR, elbow)
 
     
-    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes)), CR
+    return construct_sparse(neighbors, weights, (len(nodes), nnodes)), construct_sparse(neighbors, core_weights, (len(nodes), nnodes)), mean_kn
 
 
 def construct_sparse(neighbors, weights, shape):
@@ -312,10 +241,10 @@ def construct_sparse(neighbors, weights, shape):
     return sp.coo_matrix((np.concatenate(weights), (i, j)), shape)
 
 
-def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row'):
+def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalization='row', elbow=False):
     """Create a sparse matrix where each node has up to the topk PPR neighbors and their weights."""
 
-    topk_matrix, core_topk_matrix, coreRank = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers)
+    topk_matrix, core_topk_matrix, mean_kn = ppr_topk(adj_matrix, alpha, eps, idx, topk, core_numbers, elbow)
 
     topk_matrix, core_topk_matrix = topk_matrix.tocsr(), core_topk_matrix.tocsr()
 
@@ -346,4 +275,4 @@ def topk_ppr_matrix(adj_matrix, alpha, eps, idx, topk, core_numbers, normalizati
         raise ValueError(f"Unknown PPR normalization: {normalization}")
 
    
-    return topk_matrix, core_topk_matrix, coreRank, 0
+    return topk_matrix, core_topk_matrix, mean_kn
