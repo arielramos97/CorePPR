@@ -98,53 +98,48 @@ class PPRGo:
         return feed
 
     def _get_logits(self, sess, attr_matrix, nnodes, ppr_matrix, core_matrix, batch_size_logits=10000):
+       
         logits = []
-        final_logits = []
 
-        # for i in range(0, nnodes, batch_size_logits):
-
-        #     current_ppr_matrix = ppr_matrix[i:i + batch_size_logits]
-        #     current_core_matrix = core_matrix[i:i + batch_size_logits]
-
-        #     source_idx, neighbor_idx = current_ppr_matrix.nonzero()
-        #     batch_attr = attr_matrix[neighbor_idx]
-
-        #     current_logits, gamma, weighted_logits = sess.run([self.logits, self.gamma, self.weighted_logits],
-        #                             {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
-        #                                 self.batch_pprw: current_ppr_matrix[source_idx, neighbor_idx].A1,
-        #                                 self.batch_core: current_core_matrix[source_idx, neighbor_idx].A1,
-        #                                 self.batch_idx: source_idx,
-        #                                 self.batch_size: current_ppr_matrix.shape[0],
-        #                             }
-        #                             )
+        if ppr_matrix is None or core_matrix is None:  #Only use Power Iteration
             
-        #     logits.append(current_logits)
-        #     final_logits.append(weighted_logits)
+            for i in range(0, nnodes, batch_size_logits):
 
-        # logits = np.row_stack(logits)
-        # final_logits = np.row_stack(final_logits)
-        # return logits, gamma, final_logits
+                batch_attr = attr_matrix[i:i + batch_size_logits]
 
+                current_logits, gamma = sess.run([self.logits, self.gamma],
+                                    {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
+                                    }
+                                    )          
 
+                logits.append(current_logits)       
 
-        
+        else:                                           #Use CoreRank also in Inference
 
-        for i in range(0, nnodes, batch_size_logits):
+            for i in range(0, nnodes, batch_size_logits):
 
-            batch_attr = attr_matrix[i:i + batch_size_logits]
+                current_ppr_matrix = ppr_matrix[i:i + batch_size_logits]
+                current_core_matrix = core_matrix[i:i + batch_size_logits]
 
-            current_logits, gamma = sess.run([self.logits, self.gamma],
-                                   {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
-                                   }
-                                   )          
+                source_idx, neighbor_idx = current_ppr_matrix.nonzero()
+                batch_attr = attr_matrix[neighbor_idx]
 
-            logits.append(current_logits)
-            final_logits.append(current_logits)
+                current_logits, gamma  = sess.run([self.weighted_logits, self.gamma],
+                                        {self.batch_feats: sparse_feeder(batch_attr) if self.sparse_features else batch_attr,
+                                            self.batch_pprw: current_ppr_matrix[source_idx, neighbor_idx].A1,
+                                            self.batch_core: current_core_matrix[source_idx, neighbor_idx].A1,
+                                            self.batch_idx: source_idx,
+                                            self.batch_size: current_ppr_matrix.shape[0],
+                                        }
+                                        )
+                
+                logits.append(current_logits)
+
         logits = np.row_stack(logits)
-        final_logits = np.row_stack(final_logits)
-        return logits, gamma, final_logits
+        return logits, gamma
 
-    def predict(self, sess, adj_matrix, attr_matrix, alpha, ppr_topk_test, core_topk_test,
+
+    def predict(self, sess, adj_matrix, attr_matrix, alpha, ppr_topk_test=None, core_topk_test=None,
                 nprop=2, inf_fraction=1.0, ppr_normalization='sym', batch_size_logits=10000):
 
         start = time.time()
@@ -152,24 +147,24 @@ class PPRGo:
             idx_sub = np.random.choice(adj_matrix.shape[0], int(inf_fraction * adj_matrix.shape[0]), replace=False)
             idx_sub.sort()
             attr_sub = attr_matrix[idx_sub]
-            # logits_sub = self._get_logits(sess, attr_sub, idx_sub.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
-            logits_sub = self._get_logits(sess, attr_sub, idx_sub.shape[0], None, None, batch_size_logits)
+            logits_sub, gamma = self._get_logits(sess, attr_sub, idx_sub.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
             local_logits = np.zeros([adj_matrix.shape[0], logits_sub.shape[1]], dtype=np.float32)
             local_logits[idx_sub] = logits_sub
         else:
-            # local_logits, gamma, weighted_logits = self._get_logits(sess, attr_matrix, ppr_topk_test.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
-            local_logits, gamma, weighted_logits = self._get_logits(sess, attr_matrix, adj_matrix.shape[0], None, None, batch_size_logits)
+            if ppr_topk_test is None or core_topk_test is None:
+                local_logits, gamma = self._get_logits(sess, attr_matrix, adj_matrix.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
+            else:
+                local_logits, gamma = self._get_logits(sess, attr_matrix, ppr_topk_test.shape[0], ppr_topk_test, core_topk_test, batch_size_logits)
+                time_logits = time.time() - start
+                print('Inference gamma: ', gamma)
+                start = time.time()
+                predictions = local_logits.argmax(1)
+                time_propagation = time.time() - start
+                return predictions, time_logits, time_propagation
+
+            
         time_logits = time.time() - start
-
         print('Inference gamma: ', gamma)
-
-
-        # start = time.time()
-        # predictions = weighted_logits.argmax(1)
-        # time_propagation = time.time() - start
-        # return predictions, time_logits, time_propagation, weighted_logits
-
-
 
         row, col = adj_matrix.nonzero()
         logits = local_logits.copy()
@@ -195,7 +190,7 @@ class PPRGo:
         predictions = logits.argmax(1)
         time_propagation = time.time() - start
 
-        return predictions, time_logits, time_propagation, logits
+        return predictions, time_logits, time_propagation
 
     def get_vars(self, sess):
         return sess.run(tf.trainable_variables())
