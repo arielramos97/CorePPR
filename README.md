@@ -1,35 +1,34 @@
-# PPRGo (original, TensorFlow 1)
+# CorePPR 
 
-This repository provides the reference implementation of PPRGo for a single machine in TensorFlow 1. You can find an implementation in [PyTorch in another repository](https://github.com/TUM-DAML/pprgo_pytorch). PPRGo is a fast GNN able to scale to massive graphs in both single-machine and distributed setups. It was proposed in our paper
+This repository provides the reference implementation of CorePPR for a single machine in TensorFlow 1. 
 
-**[Scaling Graph Neural Networks with Approximate PageRank](https://www.daml.in.tum.de/pprgo)**   
-by Aleksandar Bojchevski\*, Johannes Gasteiger\*, Bryan Perozzi, Amol Kapoor, Martin Blais, Benedek Rózemberczki, Michal Lukasik, Stephan Günnemann  
-Published at ACM SIGKDD 2020.
+CorePPR is a scalable model that utilises a learnable convex combination of the approximate personalised PageRank and the CoreRank to diffuse multi-hop
+neighbourhood information in GNNs. It was proposed in our paper
 
-\*Both authors contributed equally to this research. Note that the author's name has changed from Johannes Klicpera to Johannes Gasteiger.
+**[Improving Graph Neural Networks at Scale: Combining Approximate PageRank and CoreRank](https://arxiv.org/abs/2211.04248)**   
+by Ariel R. Ramos Vela\*, Johannes F. Lutzeyer\*, Anastasios Giovanidis, Michalis Vazirgiannis 
+Accepted at the "NeurIPS 2022 New Frontiers in Graph Learning Workshop (NeurIPS GLFrontiers 2022)"
 
-## Demonstration
-To see for yourself how fast PPRGo runs even on a large dataset we've set up a [Google Colab notebook](https://colab.research.google.com/drive/1aRJI8-AwHOHdVQkAsD0ELIu3eof09An8?usp=sharing), which trains and generates predictions for the Reddit dataset, as described in the paper.
+\*Corresponding authors:
+
 
 ## Installation
 You can install the repository using `pip install -e .`. However, installing the requirements like this will result in TensorFlow using CUDA 10.0, which contains a bug that affects PPRGo. We recommend importing the Anaconda environment saved in `environment.yaml` instead, which provides the correct TensorFlow and CUDA versions.
 
 ## Run the code
-This repository contains a demo notebook for running training and inference (`demo.ipynb`) and a script for running the model on a cluster with [SEML](https://github.com/TUM-DAML/seml) (`run_seml.py`).
+To see for yourself how CorePPR performs on a large dataset, we have included a (`demo.ipynb`) notebook that trains and generates predictions for the datasets described in the paper.
 
 ## Contact
-Please contact a.bojchevski@in.tum.de or j.gasteiger@in.tum.de if you have any questions.
+Please contact ariel.ramosvela@ip-paris.fr or johannes.lutzeyer@polytechnique.edu. if you have any question.
 
 ## Cite
 Please cite our paper if you use the model or this code in your own work:
 
 ```
-@inproceedings{bojchevski2020pprgo,
-  title={Scaling Graph Neural Networks with Approximate PageRank},
-  author={Bojchevski, Aleksandar and Gasteiger, Johannes and Perozzi, Bryan and Kapoor, Amol and Blais, Martin and R{\'o}zemberczki, Benedek and Lukasik, Michal and G{\"u}nnemann, Stephan},
-  booktitle = {Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
-  year={2020},
-  publisher = {ACM},
-  address = {New York, NY, USA},
+@article{vela2022improving,
+  title={Improving Graph Neural Networks at Scale: Combining Approximate PageRank and CoreRank},
+  author={Vela, Ariel R Ramos and Lutzeyer, Johannes F and Giovanidis, Anastasios and Vazirgiannis, Michalis},
+  journal={arXiv preprint arXiv:2211.04248},
+  year={2022}
 }
 ```
