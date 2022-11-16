@@ -101,16 +101,10 @@ def get_elbow_point(sorted_scores):
 @numba.njit(cache=True)
 def k_core(indptr, indices, deg):
 
-
     nodes = np.argsort(deg)
 
     bin_boundaries = [0]
     curr_degree = 0
-
-    # for i, v in enumerate(nodes):
-    #     if deg[v] > curr_degree:
-    #         bin_boundaries.extend([i] * (deg[v] - curr_degree))
-    #         curr_degree = deg[v]
     
     for i in numba.prange(len(nodes)):
         if deg[nodes[i]] > curr_degree:
@@ -127,14 +121,8 @@ def k_core(indptr, indices, deg):
     nbrs = []
     for i in numba.prange(len(indptr)-1):
         nbrs.append(list(indices[indptr[i]:indptr[i + 1]]))
-    # nbrs = {v: list(indices[indptr[v]:indptr[v + 1]]) for v in nodes}
-
-    # printing = int(len(nodes) / 10)
 
     for i in numba.prange(len(nodes)):
-        # if i % printing ==0:
-        #     print(i, ' nodes processed')
-
         for j in numba.prange(len(nbrs[nodes[i]])):
             
             if core[nbrs[nodes[i]][j]] > core[nodes[i]]:

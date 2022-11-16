@@ -86,7 +86,7 @@ e_point = get_elbow_point2(test_sorted.tolist())
 print(e_point)
 
 
-fig, (ax1, ax2) = plt.subplots(2)
+fig, (ax1) = plt.subplots(1)
 
 
 # ax2.set_xlabel('k')
@@ -96,8 +96,8 @@ fig, (ax1, ax2) = plt.subplots(2)
 
 
 
-ax1.set_xlabel('k')
-ax1.set_ylabel('PageRank values')
+ax1.set_xlabel('ℓ')
+ax1.set_ylabel('Approximate PageRank scores (Descending order)')
 ax1.plot(x, test_sorted, 'bx-')
 ax1.vlines(e_point, np.min(test_sorted), np.max(test_sorted), linestyles='dashed')
 
