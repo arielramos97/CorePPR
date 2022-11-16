@@ -25,22 +25,21 @@ Please contact ariel.ramosvela@ip-paris.fr or johannes.lutzeyer@polytechnique.ed
 Please cite our paper if you use the model or this code in your own work:
 
 ```
-@article{DBLP:journals/corr/abs-2211-04248,
-  author    = {Ariel R. Ramos Vela and
-               Johannes F. Lutzeyer and
-               Anastasios Giovanidis and
-               Michalis Vazirgiannis},
-  title     = {Improving Graph Neural Networks at Scale: Combining Approximate PageRank
-               and CoreRank},
-  journal   = {CoRR},
-  volume    = {abs/2211.04248},
-  year      = {2022},
-  url       = {https://doi.org/10.48550/arXiv.2211.04248},
-  doi       = {10.48550/arXiv.2211.04248},
-  eprinttype = {arXiv},
-  eprint    = {2211.04248},
-  timestamp = {Thu, 10 Nov 2022 11:08:40 +0100},
-  biburl    = {https://dblp.org/rec/journals/corr/abs-2211-04248.bib},
-  bibsource = {dblp computer science bibliography, https://dblp.org}
+@misc{https://doi.org/10.48550/arxiv.2211.04248,
+  doi = {10.48550/ARXIV.2211.04248},
+  
+  url = {https://arxiv.org/abs/2211.04248},
+  
+  author = {Vela, Ariel R. Ramos and Lutzeyer, Johannes F. and Giovanidis, Anastasios and Vazirgiannis, Michalis},
+  
+  keywords = {Machine Learning (cs.LG), Social and Information Networks (cs.SI), Machine Learning (stat.ML), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  
+  title = {Improving Graph Neural Networks at Scale: Combining Approximate PageRank and CoreRank},
+  
+  publisher = {arXiv},
+  
+  year = {2022},
+  
+  copyright = {Creative Commons Attribution Non Commercial Share Alike 4.0 International}
 }
 ```
