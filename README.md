@@ -6,10 +6,8 @@ CorePPR is a scalable model that utilises a learnable convex combination of the 
 neighbourhood information in GNNs. It was proposed in our paper
 
 **[Improving Graph Neural Networks at Scale: Combining Approximate PageRank and CoreRank](https://arxiv.org/abs/2211.04248)**   
-by Ariel R. Ramos Vela\*, Johannes F. Lutzeyer\*, Anastasios Giovanidis, Michalis Vazirgiannis 
+by Ariel R. Ramos Vela, Johannes F. Lutzeyer, Anastasios Giovanidis, Michalis Vazirgiannis 
 Accepted at the "NeurIPS 2022 New Frontiers in Graph Learning Workshop (NeurIPS GLFrontiers 2022)"
-
-\*Corresponding authors:
 
 
 ## Installation
